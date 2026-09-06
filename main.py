@@ -56,7 +56,7 @@ class CalculatorView(discord.ui.View):
         await interaction.response.send_modal(DirectInputModal())
 
 
-@bot.tree.command(name="환율설정", description="1만원당 로벅스 값을 설정합니다.")
+@bot.tree.command(name="setrate", description="1만원당 로벅스 값을 설정합니다.")
 async def set_rate(interaction: discord.Interaction, amount: int):
     user_id = interaction.user.id
     user_rates[user_id] = amount
@@ -66,13 +66,13 @@ async def set_rate(interaction: discord.Interaction, amount: int):
     )
 
 
-@bot.tree.command(name="R계산", description="로벅스를 원화로 변환합니다.")
+@bot.tree.command(name="rcalc", description="로벅스를 원화로 변환합니다.")
 async def r_calculate(interaction: discord.Interaction, rbx: int):
     user_id = interaction.user.id
     
     if user_id not in user_rates:
         await interaction.response.send_message(
-            "❌ 먼저 `/환율설정`으로 환율을 설정하세요!\n예: `/환율설정 1300`",
+            "❌ 먼저 `/setrate`으로 환율을 설정하세요!\n예: `/setrate 1300`",
             ephemeral=True
         )
         return
@@ -86,13 +86,13 @@ async def r_calculate(interaction: discord.Interaction, rbx: int):
     )
 
 
-@bot.tree.command(name="원화계산", description="원화를 로벅스로 변환합니다. (30% 수수료 적용)")
+@bot.tree.command(name="woncalc", description="원화를 로벅스로 변환합니다. (30% 수수료 적용)")
 async def won_calculate(interaction: discord.Interaction, won: int):
     user_id = interaction.user.id
     
     if user_id not in user_rates:
         await interaction.response.send_message(
-            "❌ 먼저 `/환율설정`으로 환율을 설정하세요!\n예: `/환율설정 1300`",
+            "❌ 먼저 `/setrate`으로 환율을 설정하세요!\n예: `/setrate 1300`",
             ephemeral=True
         )
         return
@@ -119,7 +119,7 @@ async def on_ready():
     print(f"✅ 명령어: {len(synced)}개")
 
 
-@bot.tree.command(name="계산패널", description="계산 패널을 띄웁니다.")
+@bot.tree.command(name="calculator", description="계산 패널을 띄웁니다.")
 async def panel(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await interaction.followup.send(embed=get_panel_embed(), view=CalculatorView())
