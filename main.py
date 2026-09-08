@@ -2,7 +2,7 @@ import os
 import discord
 from discord.ext import commands
 
-# Intents 완벽 설정
+# Intents 설정
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -19,72 +19,119 @@ async def on_ready():
 
 
 # ==========================================
-# 1. 통합 메인 메뉴 명령어 (/계산기 또는 /메뉴)
+# 1. 로벅스 계산기 명령어 (/로벅스메뉴) - #robux-계산기 전용
 # ==========================================
-@bot.tree.command(name="메뉴", description="로벅스 및 블레이드볼 통합 계산기 메인 메뉴")
-async def main_menu(interaction: discord.Interaction):
+@bot.tree.command(name="로벅스메뉴", description="로벅스 계산기 메뉴 (#robux-계산기 전용)")
+async def robux_menu(interaction: discord.Interaction):
+    # 채널 검사 (원하는 채널 이름이 아니면 차단)
+    if interaction.channel.name != "robux-계산기":
+        await interaction.response.send_message(
+            "❌ 이 명령어는 **#robux-계산기** 채널에서만 사용할 수 있습니다!", 
+            ephemeral=True
+        )
+        return
+
     try:
         embed = discord.Embed(
-            title="💎 로블록스 통합 계산기",
-            description="원하시는 계산 기능을 아래 버튼에서 선택해주세요!\n*(실수 방지를 위해 입력값과 환율을 꼼꼼히 확인합니다)*",
+            title="💎 로벅스 계산기",
+            description="로벅스 환율 설정 및 환산 메뉴입니다.",
             color=discord.Color.blue()
         )
         
-        class IntegratedMenuView(discord.ui.View):
+        class RobuxView(discord.ui.View):
             def __init__(self):
                 super().__init__(timeout=None)
             
-            # --- 로벅스 관련 버튼 ---
-            @discord.ui.button(label="💵 로벅스 환율 설정", style=discord.ButtonStyle.primary, row=0)
-            async def set_robux_rate(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="환율 설정", style=discord.ButtonStyle.primary)
+            async def set_rate_btn(self, interaction: discord.Interaction, button):
                 await interaction.response.send_modal(RateModal())
             
-            @discord.ui.button(label="원화 → 로벅스", style=discord.ButtonStyle.success, row=0)
+            @discord.ui.button(label="원화→로벅스", style=discord.ButtonStyle.success)
             async def won_to_rbx(self, interaction: discord.Interaction, button):
                 await interaction.response.send_modal(WonModal())
             
-            @discord.ui.button(label="로벅스 → 원화", style=discord.ButtonStyle.danger, row=0)
+            @discord.ui.button(label="로벅스→원화", style=discord.ButtonStyle.danger)
             async def rbx_to_won(self, interaction: discord.Interaction, button):
                 await interaction.response.send_modal(RbxModal())
             
-            # --- 블레이드볼 토큰 관련 버튼 ---
-            @discord.ui.button(label="⚔️ 토큰 환율 설정", style=discord.ButtonStyle.primary, row=1)
-            async def set_token_rate(self, interaction: discord.Interaction, button):
-                await interaction.response.send_modal(TokenRateModal())
-            
-            @discord.ui.button(label="원화 → 토큰", style=discord.ButtonStyle.success, row=1)
-            async def won_to_token(self, interaction: discord.Interaction, button):
-                await interaction.response.send_modal(WonToTokenModal())
-            
-            @discord.ui.button(label="토큰 → 원화", style=discord.ButtonStyle.danger, row=1)
-            async def token_to_won(self, interaction: discord.Interaction, button):
-                await interaction.response.send_modal(TokenToWonModal())
-            
-            # --- 내 설정 확인 버튼 ---
-            @discord.ui.button(label="🔍 내 설정 확인", style=discord.ButtonStyle.secondary, row=2)
-            async def check_my_rates(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="내 환율 확인", style=discord.ButtonStyle.secondary)
+            async def check_rate(self, interaction: discord.Interaction, button):
                 user_id = interaction.user.id
-                
-                rbx_text = f"1만원당 **{user_rates[user_id]:,}R**" if user_id in user_rates else "❌ 미설정"
-                token_text = f"1,000 토큰당 **{user_token_rates[user_id]:,}원**" if user_id in user_token_rates else "❌ 미설정"
-                
-                embed_check = discord.Embed(
-                    title="📊 내 환율 설정 현황",
-                    color=discord.Color.purple()
-                )
-                embed_check.add_field(name="💎 로벅스 환율", value=rbx_text, inline=False)
-                embed_check.add_field(name="⚔️ 블레이드볼 토큰 환율", value=token_text, inline=False)
-                
-                await interaction.response.send_message(embed=embed_check, ephemeral=True)
+                if user_id in user_rates:
+                    await interaction.response.send_message(
+                        f"현재 로벅스 환율: 1만원당 **{user_rates[user_id]:,}R**",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(
+                        "❌ 환율을 설정하지 않았습니다.\n'환율 설정' 버튼을 클릭해주세요.",
+                        ephemeral=True
+                    )
         
-        await interaction.response.send_message(embed=embed, view=IntegratedMenuView())
+        await interaction.response.send_message(embed=embed, view=RobuxView())
     except Exception as e:
         print(f"오류: {e}")
         await interaction.response.send_message("❌ 오류가 발생했습니다.", ephemeral=True)
 
 
 # ==========================================
-# 2. 로벅스 관련 모달 (Modals)
+# 2. 블레이드볼 토큰 계산기 명령어 (/토큰메뉴) - #블레이드볼-토큰계산 전용
+# ==========================================
+@bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 계산기 메뉴 (#블레이드볼-토큰계산 전용)")
+async def token_menu(interaction: discord.Interaction):
+    # 채널 검사 (원하는 채널 이름이 아니면 차단)
+    if interaction.channel.name != "블레이드볼-토큰계산":
+        await interaction.response.send_message(
+            "❌ 이 명령어는 **#블레이드볼-토큰계산** 채널에서만 사용할 수 있습니다!", 
+            ephemeral=True
+        )
+        return
+
+    try:
+        embed = discord.Embed(
+            title="⚔️ 블레이드 볼 토큰 계산기",
+            description="블레이드볼 토큰 시세 계산 메뉴입니다.\n*(실수 방지를 위해 입력값과 환율을 꼼꼼히 확인합니다)*",
+            color=discord.Color.gold()
+        )
+        
+        class TokenView(discord.ui.View):
+            def __init__(self):
+                super().__init__(timeout=None)
+            
+            @discord.ui.button(label="토큰 환율 설정", style=discord.ButtonStyle.primary)
+            async def set_token_rate(self, interaction: discord.Interaction, button):
+                await interaction.response.send_modal(TokenRateModal())
+            
+            @discord.ui.button(label="원화 → 토큰", style=discord.ButtonStyle.success)
+            async def won_to_token(self, interaction: discord.Interaction, button):
+                await interaction.response.send_modal(WonToTokenModal())
+            
+            @discord.ui.button(label="토큰 → 원화", style=discord.ButtonStyle.danger)
+            async def token_to_won(self, interaction: discord.Interaction, button):
+                await interaction.response.send_modal(TokenToWonModal())
+            
+            @discord.ui.button(label="내 토큰 환율 확인", style=discord.ButtonStyle.secondary)
+            async def check_token_rate(self, interaction: discord.Interaction, button):
+                user_id = interaction.user.id
+                if user_id in user_token_rates:
+                    await interaction.response.send_message(
+                        f"현재 설정된 토큰 환율: **1,000 토큰당 {user_token_rates[user_id]:,}원**",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(
+                        "❌ 아직 토큰 환율을 설정하지 않았습니다.\n'토큰 환율 설정' 버튼을 클릭해주세요.",
+                        ephemeral=True
+                    )
+        
+        await interaction.response.send_message(embed=embed, view=TokenView())
+    except Exception as e:
+        print(f"오류: {e}")
+        await interaction.response.send_message("❌ 오류가 발생했습니다.", ephemeral=True)
+
+
+# ==========================================
+# 3. 로벅스 관련 모달 (Modals)
 # ==========================================
 class RateModal(discord.ui.Modal, title="로벅스 환율 설정"):
     rate = discord.ui.TextInput(label="1만원당 로벅스", placeholder="예: 1300 (콤마 없이 숫자만)")
@@ -173,7 +220,7 @@ class RbxModal(discord.ui.Modal, title="로벅스 → 원화"):
 
 
 # ==========================================
-# 3. 블레이드볼 토큰 관련 모달 (Modals)
+# 4. 블레이드볼 토큰 관련 모달 (Modals)
 # ==========================================
 class TokenRateModal(discord.ui.Modal, title="토큰 환율 설정"):
     rate = discord.ui.TextInput(label="1,000 토큰당 가격 (원)", placeholder="예: 5000 또는 4650")
@@ -212,7 +259,7 @@ class WonToTokenModal(discord.ui.Modal, title="원화 → 토큰 계산"):
             
             clean_value = self.won.value.replace(",", "").strip()
             won_value = int(clean_value)
-            rate = user_token_rates[user_id] # 1000토큰당 원화 가격
+            rate = user_token_rates[user_id]
             
             tokens = (won_value / rate) * 1000
             
@@ -241,7 +288,7 @@ class TokenToWonModal(discord.ui.Modal, title="토큰 → 원화 계산"):
             
             clean_value = self.tokens.value.replace(",", "").strip()
             token_value = int(clean_value)
-            rate = user_token_rates[user_id] # 1000토큰당 원화 가격
+            rate = user_token_rates[user_id]
             
             won_value = (token_value / 1000) * rate
             
@@ -258,25 +305,5 @@ class TokenToWonModal(discord.ui.Modal, title="토큰 → 원화 계산"):
             await interaction.response.send_message("❌ 오류가 발생했습니다.", ephemeral=True)
 
 
-# ==========================================
-# 4. 도움말 명령어
-# ==========================================
-@bot.tree.command(name="도움말", description="봇 사용법 안내")
-async def help_command(interaction: discord.Interaction):
-    try:
-        embed = discord.Embed(
-            title="📖 로블록스 통합 계산기 사용법",
-            description="안전한 거래를 위한 환산 봇입니다.",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="/메뉴", value="로벅스 및 블레이드볼 계산 메뉴를 엽니다.", inline=False)
-        embed.add_field(name="사용 방법", value="1. 먼저 각 항목의 **[환율 설정]** 버튼을 눌러 시세를 지정합니다.\n2. 원하는 계산 버튼(**원화↔로벅스** 또는 **원화↔토큰**)을 눌러 금액을 확인합니다.", inline=False)
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    except Exception as e:
-        print(f"오류: {e}")
-        await interaction.response.send_message("❌ 오류가 발생했습니다.", ephemeral=True)
-
-
-# 프로그램 실행 (맨 마지막에 딱 1개만 존재해야 함)
+# 프로그램 실행
 bot.run(os.environ.get("DISCORD_TOKEN"))
