@@ -2,7 +2,7 @@ import os
 import discord
 from discord.ext import commands
 
-# Intents 설정 (메시지 읽기 권한 필수)
+# Intents 설정 (메시지 읽기 및 상호작용 권한 필수)
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -36,22 +36,22 @@ async def robux_menu(interaction: discord.Interaction):
         
         class RobuxView(discord.ui.View):
             def __init__(self):
-                super().__init__(timeout=None)
+                super().__init__(timeout=None) # 시간 지나도 버튼 안 풀리게 설정
             
-            @discord.ui.button(label="환율 설정", style=discord.ButtonStyle.primary)
-            async def set_rate_btn(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="환율 설정", style=discord.ButtonStyle.primary, custom_id="robux_set_rate")
+            async def set_rate_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await interaction.response.send_modal(RateModal())
             
-            @discord.ui.button(label="원화→로벅스", style=discord.ButtonStyle.success)
-            async def won_to_rbx(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="원화→로벅스", style=discord.ButtonStyle.success, custom_id="robux_won_to_rbx")
+            async def won_to_rbx(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await interaction.response.send_modal(WonModal())
             
-            @discord.ui.button(label="로벅스→원화", style=discord.ButtonStyle.danger)
-            async def rbx_to_won(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="로벅스→원화", style=discord.ButtonStyle.danger, custom_id="robux_rbx_to_won")
+            async def rbx_to_won(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await interaction.response.send_modal(RbxModal())
             
-            @discord.ui.button(label="내 환율 확인", style=discord.ButtonStyle.secondary)
-            async def check_rate(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="내 환율 확인", style=discord.ButtonStyle.secondary, custom_id="robux_check_rate")
+            async def check_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
                 user_id = interaction.user.id
                 if user_id in user_rates:
                     await interaction.response.send_message(f"현재 로벅스 환율: 1만원당 **{user_rates[user_id]:,}R**", ephemeral=True)
@@ -60,6 +60,7 @@ async def robux_menu(interaction: discord.Interaction):
         
         await interaction.response.send_message(embed=embed, view=RobuxView())
     except Exception as e:
+        print(f"로벅스메뉴 오류: {e}")
         await interaction.response.send_message("❌ 처리 중 오류가 발생했습니다.", ephemeral=True)
 
 
@@ -79,20 +80,20 @@ async def token_menu(interaction: discord.Interaction):
             def __init__(self):
                 super().__init__(timeout=None)
             
-            @discord.ui.button(label="토큰 환율 설정", style=discord.ButtonStyle.primary)
-            async def set_token_rate(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="토큰 환율 설정", style=discord.ButtonStyle.primary, custom_id="token_set_rate")
+            async def set_token_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await interaction.response.send_modal(TokenRateModal())
             
-            @discord.ui.button(label="원화 → 토큰", style=discord.ButtonStyle.success)
-            async def won_to_token(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="원화 → 토큰", style=discord.ButtonStyle.success, custom_id="token_won_to_token")
+            async def won_to_token(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await interaction.response.send_modal(WonToTokenModal())
             
-            @discord.ui.button(label="토큰 → 원화", style=discord.ButtonStyle.danger)
-            async def token_to_won(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="토큰 → 원화", style=discord.ButtonStyle.danger, custom_id="token_token_to_won")
+            async def token_to_won(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await interaction.response.send_modal(TokenToWonModal())
             
-            @discord.ui.button(label="내 토큰 환율 확인", style=discord.ButtonStyle.secondary)
-            async def check_token_rate(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="내 토큰 환율 확인", style=discord.ButtonStyle.secondary, custom_id="token_check_rate")
+            async def check_token_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
                 user_id = interaction.user.id
                 if user_id in user_token_rates:
                     await interaction.response.send_message(f"현재 설정된 토큰 환율: **1,000 토큰당 {user_token_rates[user_id]:,}원**", ephemeral=True)
@@ -101,6 +102,7 @@ async def token_menu(interaction: discord.Interaction):
         
         await interaction.response.send_message(embed=embed, view=TokenView())
     except Exception as e:
+        print(f"토큰메뉴 오류: {e}")
         await interaction.response.send_message("❌ 처리 중 오류가 발생했습니다.", ephemeral=True)
 
 
@@ -120,16 +122,17 @@ async def battle_cats_menu(interaction: discord.Interaction):
             def __init__(self):
                 super().__init__(timeout=None)
             
-            @discord.ui.button(label="🚨 백업 및 안전 수칙", style=discord.ButtonStyle.primary)
-            async def safe_tip(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="🚨 백업 및 안전 수칙", style=discord.ButtonStyle.primary, custom_id="bc_safe_tip")
+            async def safe_tip(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await interaction.response.send_message("📌 **데이터 손상 방지 필수 수칙**\n1. 세이브 편집 전 반드시 **계정 백업 코드**를 따로 적어두세요.\n2. 과도한 통조림 및 XP 수정은 밴의 원인이 됩니다.", ephemeral=True)
             
-            @discord.ui.button(label="📢 관리자 공지 작성", style=discord.ButtonStyle.danger)
-            async def notice_btn(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="📢 관리자 공지 작성", style=discord.ButtonStyle.danger, custom_id="bc_notice_btn")
+            async def notice_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await interaction.response.send_modal(BattleCatsNoticeModal())
         
         await interaction.response.send_message(embed=embed, view=BattleCatsSafeView())
     except Exception as e:
+        print(f"냥코메뉴 오류: {e}")
         await interaction.response.send_message("❌ 처리 중 오류가 발생했습니다.", ephemeral=True)
 
 
@@ -159,7 +162,7 @@ async def start_word_chain(interaction: discord.Interaction):
 
 
 # ==========================================
-# 5. 끝말잇기 실시간 채팅 감지 (#끝말잇기 채널 한정)
+# 5. 끝말잇기 실시간 채팅 감지 (독립형 이벤트)
 # ==========================================
 @bot.event
 async def on_message(message: discord.Message):
@@ -167,17 +170,15 @@ async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
         return
 
-    # 채널 객체가 존재하고 이름이 '끝말잇기'인지 확인
+    # #끝말잇기 채널에서 올라오는 일반 채팅만 정밀 타격
     if message.channel.name == "끝말잇기":
-        channel_id = message.channel.id
         content = message.content.strip()
 
-        # 접두사나 슬래시 명령어는 끝말잇기 로직에서 제외하고 일반 명령어로 처리
+        # 느낌표(!)나 슬래시(/) 명령어는 끝말잇기 로직에서 무시하고 넘김
         if content.startswith("!") or content.startswith("/"):
-            await bot.process_commands(message)
             return
 
-        # 게임이 시작되지 않은 상태에서 일반 채팅을 칠 경우 무시
+        channel_id = message.channel.id
         if channel_id not in word_chain_games:
             return
 
@@ -224,8 +225,6 @@ async def on_message(message: discord.Message):
         game["current_word"] = bot_word
 
         await message.channel.send(f"🤖 봇의 답변: **{bot_word}** (이어서 입력하세요: **'{bot_word[-1]}'**(으)로 시작)")
-
-    await bot.process_commands(message)
 
 
 # ==========================================
