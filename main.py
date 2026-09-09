@@ -69,7 +69,7 @@ async def robux_menu(interaction: discord.Interaction):
         
         await interaction.response.send_message(embed=embed, view=RobuxView())
     except Exception as e:
-        print(f"로벅스메뉴 오류 발생: {e}")
+        print(f"로벅스메뉴 오류: {e}")
         await interaction.response.send_message("❌ 처리 중 오류가 발생했습니다.", ephemeral=True)
 
 
@@ -88,7 +88,7 @@ async def token_menu(interaction: discord.Interaction):
     try:
         embed = discord.Embed(
             title="⚔️ 블레이드 볼 토큰 계산기",
-            description="블레이드볼 토큰 시세 계산 메뉴입니다.\n*(실수 방지를 위해 입력값과 환율을 꼼꼼히 확인합니다)*",
+            description="블레이드볼 토큰 시세 계산 메뉴입니다.",
             color=discord.Color.gold()
         )
         
@@ -124,14 +124,14 @@ async def token_menu(interaction: discord.Interaction):
         
         await interaction.response.send_message(embed=embed, view=TokenView())
     except Exception as e:
-        print(f"토큰메뉴 오류 발생: {e}")
+        print(f"토큰메뉴 오류: {e}")
         await interaction.response.send_message("❌ 처리 중 오류가 발생했습니다.", ephemeral=True)
 
 
 # ==========================================
-# 3. 냥코대전쟁 BCSFE 관리자 메뉴 (/냥코메뉴) - #냥코대전쟁-관리자 전용
+# 3. 냥코대전쟁 안전 관리 메뉴 (/냥코메뉴) - #냥코대전쟁-관리자 전용
 # ==========================================
-@bot.tree.command(name="냥코메뉴", description="냥코대전쟁 BCSFE 관리 메뉴 (#냥코대전쟁-관리자 전용)")
+@bot.tree.command(name="냥코메뉴", description="냥코대전쟁 안전 관리 및 BCSFE 가이드 메뉴 (#냥코대전쟁-관리자 전용)")
 async def battle_cats_menu(interaction: discord.Interaction):
     if interaction.channel.name != "냥코대전쟁-관리자":
         await interaction.response.send_message(
@@ -142,43 +142,38 @@ async def battle_cats_menu(interaction: discord.Interaction):
 
     try:
         embed = discord.Embed(
-            title="🐱 냥코대전쟁 BCSFE 관리자 메뉴",
-            description="세이브 편집(BCSFE) 및 관리 관련 안내입니다.",
+            title="🐱 냥코대전쟁 안전 세이브 관리 센터",
+            description="데이터 손상 및 밴 위험 없는 안전한 편집 가이드와 도구 안내입니다.",
             color=discord.Color.orange()
         )
         embed.add_field(
-            name="🛠️ BCSFE란?", 
-            value="Battle Cats Save File Editor의 약자로, 냥코대전쟁 세이브 파일을 편집하는 툴입니다.", 
-            inline=False
-        )
-        embed.add_field(
-            name="⚠️ 주의사항", 
-            value="세이브 조작은 밴 위험이 있을 수 있으니 항상 백업을 먼저 하신 후 신중히 사용하세요!", 
+            name="🛡️ 데이터 손상 방지 안내", 
+            value="디스코드 봇 서버에서 직접 세이브 파일을 변조하면 파일이 깨져 **계정이 영구 손상**될 수 있습니다. 검증된 공식 오픈소스 BCSFE 툴을 안전하게 활용하세요.", 
             inline=False
         )
         
-        class BattleCatsView(discord.ui.View):
+        class BattleCatsSafeView(discord.ui.View):
             def __init__(self):
                 super().__init__(timeout=None)
             
-            @discord.ui.button(label="BCSFE 사용 팁 확인", style=discord.ButtonStyle.primary)
-            async def bcsfe_tip_btn(self, interaction: discord.Interaction, button):
+            @discord.ui.button(label="🚨 백업 및 안전 수칙", style=discord.ButtonStyle.primary)
+            async def safe_tip(self, interaction: discord.Interaction, button):
                 await interaction.response.send_message(
-                    "📌 **BCSFE 사용 팁 안전 수칙**\n1. 항상 기존 세이브 파일을 백업해 둡니다.\n2. 과도한 통솔력/통조림 수정은 정지 위험이 있으니 주의하세요.",
+                    "📌 **데이터 손상 방지 필수 수칙**\n1. 세이브 편집 전 반드시 **계정 백업 코드(인기코드)**를 따로 적어두세요.\n2. 과도한 통조림 및 XP 수정은 밴의 원인이 되므로 적당히 수정하세요.\n3. 알 수 없는 봇을 통한 파일 직접 업로드 변조는 데이터 증발의 위험이 큽니다.",
                     ephemeral=True
                 )
             
-            @discord.ui.button(label="관리자 공지 전송", style=discord.ButtonStyle.danger)
+            @discord.ui.button(label="📢 관리자 공지 작성", style=discord.ButtonStyle.danger)
             async def notice_btn(self, interaction: discord.Interaction, button):
                 await interaction.response.send_modal(BattleCatsNoticeModal())
         
-        await interaction.response.send_message(embed=embed, view=BattleCatsView())
+        await interaction.response.send_message(embed=embed, view=BattleCatsSafeView())
     except Exception as e:
-        print(f"냥코메뉴 오류 발생: {e}")
+        print(f"냥코메뉴 오류: {e}")
         await interaction.response.send_message("❌ 처리 중 오류가 발생했습니다.", ephemeral=True)
 
 
-# 냥코 관리자 공지 모달
+# 관리자 공지 모달
 class BattleCatsNoticeModal(discord.ui.Modal, title="냥코 관리자 공지 작성"):
     notice_text = discord.ui.TextInput(
         label="공지 내용", 
@@ -193,7 +188,7 @@ class BattleCatsNoticeModal(discord.ui.Modal, title="냥코 관리자 공지 작
             await interaction.channel.send(embed=embed)
             await interaction.response.send_message("✅ 공지가 성공적으로 전송되었습니다!", ephemeral=True)
         except Exception as e:
-            print(f"공지 모달 오류 발생: {e}")
+            print(f"공지 모달 오류: {e}")
             await interaction.response.send_message("❌ 공지 전송 중 오류가 발생했습니다.", ephemeral=True)
 
 
