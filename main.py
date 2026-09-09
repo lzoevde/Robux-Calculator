@@ -2,6 +2,9 @@ import os
 import discord
 from discord.ext import commands
 import random
+import urllib.request
+import xml.etree.ElementTree as ET
+import urllib.parse
 
 # Intents 설정 (메시지 읽기 및 상호작용 권한 필수)
 intents = discord.Intents.all()
@@ -12,16 +15,44 @@ user_rates = {}        # 로벅스 환율
 user_token_rates = {}  # 블레이드볼 토큰 환율
 word_chain_games = {}  # 끝말잇기 게임 상태 관리
 
-# 🟢 끝말잇기 검증용 표준 단어 사전 (확장 가능)
-VALID_WORDS = {
-    "참외", "외삼촌", "촌장", "장미", "미나리", "리본", "본드", "드라마", "마을", "을지문덕", 
-    "덕수궁", "궁전", "전기", "기차", "차표", "표범", "범고래", "래퍼", "퍼즐", "즐거움", 
-    "움직임", "임금", "금메달", "달리기", "기쁨", "쁨돌이", "리기다", "다리", "리듬", "듬직",
-    "직원", "원숭이", "이빨", "빨대", "대나무", "무궁화", "화요일", "일기", "기본", "뼛속",
-    "속담", "담벼락", "락원", "원더랜드", "드럼", "럼버", "버섯", "섯다", "다람쥐", "쥐구멍",
-    "멍멍이", "이기적", "적극", "극복", "복숭아", "아파트", "트럭", "럭비", "비행기", "기린",
-    "인형", "형광등", "등산", "산기슭", "슭곰발", "발바닥", "닥터", "터널", "널판지", "지팡이"
-}
+# 국립국어원 오픈 API 인증키 설정 완료
+STANDARD_DICT_API_KEY = "BFFDD23F65DF79D2B7181FBD03D2DD85"
+
+def check_korean_dictionary(word):
+    """
+    국립국어원 표준국어대사전 API를 통해 실제 존재하는 명사(단어)인지 확인하는 함수
+    """
+    # 글자가 2글자 미만이면 False
+    if len(word) < 2:
+        return False
+        
+    encoded_word = urllib.parse.quote(word)
+    url = f"https://opendict.korean.or.kr/api/search?key={STANDARD_DICT_API_KEY}&target=1&q={encoded_word}&part=word&sort=dict"
+    
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=3) as response:
+            xml_data = response.read()
+            tree = ET.ElementTree(ET.fromstring(xml_data))
+            root = tree.getroot()
+            
+            # 검색 결과 개수(total) 확인
+            total_elem = root.find(".//total")
+            if total_elem is not None and int(total_elem.text) > 0:
+                # 정확히 일치하는 단어 항목이 있는지 순회하며 확인
+                for item in root.findall(".//item"):
+                    word_elem = item.find("word")
+                    if word_elem is not None:
+                        # 괄호나 특수문자 제거 후 비교
+                        clean_word = word_elem.text.replace("-", "").strip()
+                        if clean_word == word:
+                            return True
+    except Exception as e:
+        print(f"사전 API 호출 오류: {e}")
+        # API 오류 발생 시 게임이 멈추지 않도록 일단 통과 처리 (또는 False 처리 가능)
+        return True 
+
+    return False
 
 
 @bot.event
@@ -174,7 +205,7 @@ async def start_word_chain(interaction: discord.Interaction):
 
 
 # ==========================================
-# 5. 끝말잇기 실시간 채팅 감지 (단어 검증 강화)
+# 5. 끝말잇기 실시간 채팅 감지 (국어사전 API 검증)
 # ==========================================
 @bot.event
 async def on_message(message: discord.Message):
@@ -207,16 +238,16 @@ async def on_message(message: discord.Message):
             await message.channel.send("❌ 두 글자 이상의 단어만 입력할 수 있습니다!")
             return
 
-        # 3. 사전(VALID_WORDS)에 존재하는 단어인지 엄격 검사
-        if content not in VALID_WORDS:
-            await message.add_reaction("❌")
-            await message.channel.send("❌ 사전에 등록되지 않았거나 올바르지 않은 단어입니다!")
-            return
-
-        # 4. 중복 단어 확인
+        # 3. 중복 단어 확인
         if content in game["used_words"]:
             await message.add_reaction("❌")
             await message.channel.send("❌ 이미 사용된 단어입니다!")
+            return
+
+        # 4. 국립국어원 사전 API를 통한 실제 단어 검증
+        if not check_korean_dictionary(content):
+            await message.add_reaction("❌")
+            await message.channel.send(f"❌ 국어사전에 등록되지 않았거나 올바르지 않은 단어입니다: **{content}**")
             return
 
         # 정답 처리
@@ -224,16 +255,19 @@ async def on_message(message: discord.Message):
         game["current_word"] = content
         await message.add_reaction("✅")
 
-        # 봇의 답변 생성 (사전에 있는 단어 중 알맞은 글자로 시작하는 단어 찾기)
+        # 봇의 답변 생성
         next_first_char = content[-1]
-        possible_words = [w for w in VALID_WORDS if w.startswith(next_first_char) and w not in game["used_words"]]
-
-        if not possible_words:
-            await message.channel.send(f"🎉 봇이 더 이상 이어갈 단어를 찾지 못했습니다! 당신의 승리입니다! 🏆")
-            del word_chain_games[channel_id]
-            return
-
-        bot_word = random.choice(possible_words)
+        sample_suffixes = ["구기자", "나라", "나무", "바다", "하늘", "사람", "마을", "다리", "노을", "가방", "지도"]
+        
+        bot_word = None
+        for suffix in sample_suffixes:
+            candidate = next_first_char + suffix
+            if candidate not in game["used_words"]:
+                bot_word = candidate
+                break
+        
+        if not bot_word:
+            bot_word = f"{next_first_char}나라"
 
         game["used_words"].append(bot_word)
         game["current_word"] = bot_word
