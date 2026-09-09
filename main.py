@@ -20,9 +20,9 @@ STANDARD_DICT_API_KEY = "BFFDD23F65DF79D2B7181FBD03D2DD85"
 
 def check_korean_dictionary(word):
     """
-    국립국어원 표준국어대사전 API를 통해 실제 존재하는 명사(단어)인지 확인하는 함수
+    국립국어원 표준국어대사전 API를 통해 실제 존재하는 명사(단어)인지 확인하는 함수 (수정됨)
     """
-    # 글자가 2글자 미만이면 False
+    # 글자가 2글자 미만이면 무조건 False
     if len(word) < 2:
         return False
         
@@ -30,28 +30,31 @@ def check_korean_dictionary(word):
     url = f"https://opendict.korean.or.kr/api/search?key={STANDARD_DICT_API_KEY}&target=1&q={encoded_word}&part=word&sort=dict"
     
     try:
-        req = urllib.request.Request(url)
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=3) as response:
             xml_data = response.read()
             tree = ET.ElementTree(ET.fromstring(xml_data))
             root = tree.getroot()
             
-            # 검색 결과 개수(total) 확인
+            # total 엘리먼트 확인
             total_elem = root.find(".//total")
             if total_elem is not None and int(total_elem.text) > 0:
-                # 정확히 일치하는 단어 항목이 있는지 순회하며 확인
+                # 검색된 항목들을 순회하며 일치하는 단어가 있는지 확인
                 for item in root.findall(".//item"):
                     word_elem = item.find("word")
-                    if word_elem is not None:
-                        # 괄호나 특수문자 제거 후 비교
-                        clean_word = word_elem.text.replace("-", "").strip()
-                        if clean_word == word:
+                    if word_elem is not None and word_elem.text:
+                        # 국어사전 단어에 붙는 부가 기호(예: 음계 번호, 하이픈 등) 제거
+                        raw_word = word_elem.text
+                        clean_word = "".join(c for c in raw_word if c.isalnum()) # 특수문자/숫자/괄호 제거 후 순수 글자만 추출
+                        
+                        # 사용자가 입력한 단어와 정확히 일치하는 경우만 True
+                        if clean_word == word or word_elem.text.replace("-", "").strip() == word:
                             return True
     except Exception as e:
         print(f"사전 API 호출 오류: {e}")
-        # API 오류 발생 시 게임이 멈추지 않도록 일단 통과 처리 (또는 False 처리 가능)
-        return True 
+        return False 
 
+    # 일치하는 단어를 못 찾았거나 결과가 없으면 확실하게 False 반환
     return False
 
 
