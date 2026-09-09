@@ -1,6 +1,7 @@
 import os
 import discord
 from discord.ext import commands
+import random
 
 # Intents 설정 (메시지 읽기 및 상호작용 권한 필수)
 intents = discord.Intents.all()
@@ -10,6 +11,17 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 user_rates = {}        # 로벅스 환율
 user_token_rates = {}  # 블레이드볼 토큰 환율
 word_chain_games = {}  # 끝말잇기 게임 상태 관리
+
+# 🟢 끝말잇기 검증용 표준 단어 사전 (확장 가능)
+VALID_WORDS = {
+    "참외", "외삼촌", "촌장", "장미", "미나리", "리본", "본드", "드라마", "마을", "을지문덕", 
+    "덕수궁", "궁전", "전기", "기차", "차표", "표범", "범고래", "래퍼", "퍼즐", "즐거움", 
+    "움직임", "임금", "금메달", "달리기", "기쁨", "쁨돌이", "리기다", "다리", "리듬", "듬직",
+    "직원", "원숭이", "이빨", "빨대", "대나무", "무궁화", "화요일", "일기", "기본", "뼛속",
+    "속담", "담벼락", "락원", "원더랜드", "드럼", "럼버", "버섯", "섯다", "다람쥐", "쥐구멍",
+    "멍멍이", "이기적", "적극", "극복", "복숭아", "아파트", "트럭", "럭비", "비행기", "기린",
+    "인형", "형광등", "등산", "산기슭", "슭곰발", "발바닥", "닥터", "터널", "널판지", "지팡이"
+}
 
 
 @bot.event
@@ -36,7 +48,7 @@ async def robux_menu(interaction: discord.Interaction):
         
         class RobuxView(discord.ui.View):
             def __init__(self):
-                super().__init__(timeout=None) # 시간 지나도 버튼 안 풀리게 설정
+                super().__init__(timeout=None)
             
             @discord.ui.button(label="환율 설정", style=discord.ButtonStyle.primary, custom_id="robux_set_rate")
             async def set_rate_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -162,19 +174,16 @@ async def start_word_chain(interaction: discord.Interaction):
 
 
 # ==========================================
-# 5. 끝말잇기 실시간 채팅 감지 (독립형 이벤트)
+# 5. 끝말잇기 실시간 채팅 감지 (단어 검증 강화)
 # ==========================================
 @bot.event
 async def on_message(message: discord.Message):
-    # 봇이 보낸 메시지나 DM은 무시
     if message.author.bot or not message.guild:
         return
 
-    # #끝말잇기 채널에서 올라오는 일반 채팅만 정밀 타격
     if message.channel.name == "끝말잇기":
         content = message.content.strip()
 
-        # 느낌표(!)나 슬래시(/) 명령어는 끝말잇기 로직에서 무시하고 넘김
         if content.startswith("!") or content.startswith("/"):
             return
 
@@ -198,7 +207,13 @@ async def on_message(message: discord.Message):
             await message.channel.send("❌ 두 글자 이상의 단어만 입력할 수 있습니다!")
             return
 
-        # 3. 중복 단어 확인
+        # 3. 사전(VALID_WORDS)에 존재하는 단어인지 엄격 검사
+        if content not in VALID_WORDS:
+            await message.add_reaction("❌")
+            await message.channel.send("❌ 사전에 등록되지 않았거나 올바르지 않은 단어입니다!")
+            return
+
+        # 4. 중복 단어 확인
         if content in game["used_words"]:
             await message.add_reaction("❌")
             await message.channel.send("❌ 이미 사용된 단어입니다!")
@@ -209,17 +224,16 @@ async def on_message(message: discord.Message):
         game["current_word"] = content
         await message.add_reaction("✅")
 
-        # 봇의 답변 생성
+        # 봇의 답변 생성 (사전에 있는 단어 중 알맞은 글자로 시작하는 단어 찾기)
         next_first_char = content[-1]
-        bot_responses = {
-            "기": "기차", "차": "참새", "새": "새우", "우": "우유", "유": "유리",
-            "리": "리본", "본": "본드", "드": "드라마", "마": "마을", "을": "음료수",
-            "수": "수박", "박": "박쥐", "쥐": "쥐포", "포": "포도", "도": "도토리"
-        }
-        bot_word = bot_responses.get(next_first_char, f"{next_first_char}구기자"[:3])
-        
-        while bot_word in game["used_words"]:
-            bot_word = f"{next_first_char}나나"
+        possible_words = [w for w in VALID_WORDS if w.startswith(next_first_char) and w not in game["used_words"]]
+
+        if not possible_words:
+            await message.channel.send(f"🎉 봇이 더 이상 이어갈 단어를 찾지 못했습니다! 당신의 승리입니다! 🏆")
+            del word_chain_games[channel_id]
+            return
+
+        bot_word = random.choice(possible_words)
 
         game["used_words"].append(bot_word)
         game["current_word"] = bot_word
