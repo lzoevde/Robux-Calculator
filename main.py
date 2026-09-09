@@ -15,12 +15,15 @@ word_chain_games = {}  # 끝말잇기 게임 상태 관리
 @bot.event
 async def on_ready():
     print(f"✅ 로그인 성공: {bot.user}")
-    synced = await bot.tree.sync()
-    print(f"✅ 슬래시 명령어 총 {len(synced)}개 동기화 완료")
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ 슬래시 명령어 총 {len(synced)}개 동기화 완료")
+    except Exception as e:
+        print(f"❌ 명령어 동기화 실패: {e}")
 
 
 # ==========================================
-# 1. 로벅스 계산기 명령어 (/로벅스메뉴) - #robux-계산기 전용
+# 1. 로벅스 계산기 명령어 (/로벅스메뉴)
 # ==========================================
 @bot.tree.command(name="로벅스메뉴", description="로벅스 계산기 메뉴 (#robux-계산기 전용)")
 async def robux_menu(interaction: discord.Interaction):
@@ -61,7 +64,7 @@ async def robux_menu(interaction: discord.Interaction):
 
 
 # ==========================================
-# 2. 블레이드볼 토큰 계산기 명령어 (/토큰메뉴) - #블레이드볼-토큰계산 전용
+# 2. 블레이드볼 토큰 계산기 명령어 (/토큰메뉴)
 # ==========================================
 @bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 계산기 메뉴 (#블레이드볼-토큰계산 전용)")
 async def token_menu(interaction: discord.Interaction):
@@ -102,7 +105,7 @@ async def token_menu(interaction: discord.Interaction):
 
 
 # ==========================================
-# 3. 냥코대전쟁 안전 관리 메뉴 (/냥코메뉴) - #냥코대전쟁-관리자 전용
+# 3. 냥코대전쟁 안전 관리 메뉴 (/냥코메뉴)
 # ==========================================
 @bot.tree.command(name="냥코메뉴", description="냥코대전쟁 안전 관리 메뉴 (#냥코대전쟁-관리자 전용)")
 async def battle_cats_menu(interaction: discord.Interaction):
@@ -131,7 +134,7 @@ async def battle_cats_menu(interaction: discord.Interaction):
 
 
 # ==========================================
-# 4. 끝말잇기 명령어 (/끝말잇기시작) - #끝말잇기 전용
+# 4. 끝말잇기 명령어 (/끝말잇기시작)
 # ==========================================
 @bot.tree.command(name="끝말잇기시작", description="현재 채널에서 봇과 끝말잇기를 시작합니다! (#끝말잇기 전용)")
 async def start_word_chain(interaction: discord.Interaction):
@@ -160,20 +163,25 @@ async def start_word_chain(interaction: discord.Interaction):
 # ==========================================
 @bot.event
 async def on_message(message: discord.Message):
-    if message.author.bot:
+    # 봇이 보낸 메시지나 DM은 무시
+    if message.author.bot or not message.guild:
         return
 
-    channel_id = message.channel.id
-
-    # #끝말잇기 채널에서만 게임 로직 실행
-    if message.channel.name == "끝말잇기" and channel_id in word_chain_games:
-        game = word_chain_games[channel_id]
+    # 채널 객체가 존재하고 이름이 '끝말잇기'인지 확인
+    if message.channel.name == "끝말잇기":
+        channel_id = message.channel.id
         content = message.content.strip()
 
+        # 접두사나 슬래시 명령어는 끝말잇기 로직에서 제외하고 일반 명령어로 처리
         if content.startswith("!") or content.startswith("/"):
             await bot.process_commands(message)
             return
 
+        # 게임이 시작되지 않은 상태에서 일반 채팅을 칠 경우 무시
+        if channel_id not in word_chain_games:
+            return
+
+        game = word_chain_games[channel_id]
         current_word = game["current_word"]
         last_char = current_word[-1]
 
