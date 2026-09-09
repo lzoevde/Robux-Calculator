@@ -2,9 +2,7 @@ import os
 import discord
 from discord.ext import commands
 import random
-import urllib.request
-import urllib.parse
-import json
+import re
 
 # Intents 설정 (메시지 읽기 및 상호작용 권한 필수)
 intents = discord.Intents.all()
@@ -17,42 +15,23 @@ word_chain_games = {}  # 끝말잇기 게임 상태 관리
 
 def check_korean_dictionary(word):
     """
-    외부 API 에러를 원천 차단하고, 
-    네이버 오픈 API나 국어사전 검색 결과를 웹 표준 방식으로 안정성 있게 확인하는 함수
+    외부 API 오류 없이 순수 한글 구조와 형태를 엄격하게 검증하는 함수
+    - 숫자, 영어, 특수문자, 자음/모음 단독 입력은 무조건 차단
+    - 온전한 한글 음절로만 이루어진 2글자 이상 단어만 허용
     """
     if len(word) < 2:
         return False
-    
-    # 임시 우회 오류 방지를 위해, 네이버 검색 공개 API 또는 
-    # 혹은 기본적인 명사 패턴 및 안정적인 체크 로직으로 변환
-    # (현재 파이썬 내에서 확실히 구동되도록 Naver Open API나 안정적인 사전 파싱으로 대체합니다)
-    try:
-        # 네이버 사전검색 공개 페이지나 오픈 API를 활용하면 오류 없이 정확합니다.
-        # 여기서는 파이썬이 절대 뻗지 않고 확실히 검증되도록 네이버 사전 검색 결과 연동 방식을 씁니다.
-        encoded_word = urllib.parse.quote(word)
-        url = f"https://dict.naver.com/api/dictionarysearch/icaSearch?query={encoded_word}&m=pc"
         
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=3) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            # 검색 결과가 존재하면 True
-            if data.get("items") or data.get("totalCount", 0) > 0 or data.get("searchResultList"):
-                return True
-                
-        # 만약의 경우를 대비한 네이버 국어사전 기본 엔드포인트 체크
-        alt_url = f"https://ko.dict.naver.com/api/json/search?query={encoded_word}&target=koko"
-        req_alt = urllib.request.Request(alt_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req_alt, timeout=3) as res_alt:
-            alt_data = json.loads(res_alt.read().decode('utf-8'))
-            if alt_data.get("searchResultMap", {}).get("totalCount", 0) > 0:
-                return True
-                
-    except Exception as e:
-        print(f"사전 검색 오류 (기본 통과 처리 방지): {e}")
-        # 오류가 나더라도 최소한 2글자 이상의 일반적인 한글 단어 구조면 튕기지 않게 안전장치 제공
-        return True
-
-    return False
+    # 오직 완성된 한글(가-힣)로만 이루어져 있는지 정규식 검사 (숫자, 영어, 자음/모음 단독 입력 차단)
+    if not re.fullmatch(r"[가-힣]+", word):
+        return False
+        
+    # '자자자'처럼 같은 글자가 3번 이상 연속되거나 비정상적인 반복 패턴 차단
+    for i in range(len(word) - 2):
+        if word[i] == word[i+1] == word[i+2]:
+            return False
+            
+    return True
 
 
 @bot.event
@@ -232,22 +211,16 @@ async def on_message(message: discord.Message):
             await message.channel.send(f"❌ 틀렸습니다! **'{last_char}'**(으)로 시작하는 단어를 말해주세요.")
             return
 
-        # 2. 두 글자 이상인지 확인
-        if len(content) < 2:
+        # 2. 두 글자 이상인지 확인 및 한글 형태 검증
+        if not check_korean_dictionary(content):
             await message.add_reaction("❌")
-            await message.channel.send("❌ 두 글자 이상의 단어만 입력할 수 있습니다!")
+            await message.channel.send(f"❌ 올바른 한글 단어가 아니거나 형식에 어긋납니다: **{content}**")
             return
 
         # 3. 중복 단어 확인
         if content in game["used_words"]:
             await message.add_reaction("❌")
             await message.channel.send("❌ 이미 사용된 단어입니다!")
-            return
-
-        # 4. 단어 유효성 검증
-        if not check_korean_dictionary(content):
-            await message.add_reaction("❌")
-            await message.channel.send(f"❌ 올바르지 않은 단어입니다: **{content}**")
             return
 
         # 정답 처리
