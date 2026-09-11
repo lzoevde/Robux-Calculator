@@ -122,7 +122,7 @@ class TokenToWonModal(discord.ui.Modal, title="토큰 → 원화 계산"):
 # ==========================================
 # 3. 봇 명령어 등록
 # ==========================================
-@bot.tree.command(name="로벅스메뉴", description="로벅스 계산기 메뉴")
+@bot.tree.command(name="로벅스메뉴", description="로벅스 계산기 메뉴 (#robux-계산기 전용)")
 async def robux_menu(interaction: discord.Interaction):
     if interaction.channel.name != "robux-계산기":
         await interaction.response.send_message("❌ 이 명령어는 **#robux-계산기** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -132,7 +132,7 @@ async def robux_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=RobuxView())
 
 
-@bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 계산기 메뉴")
+@bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 계산기 메뉴 (#블레이드볼-토큰계산 전용)")
 async def token_menu(interaction: discord.Interaction):
     if interaction.channel.name != "블레이드볼-토큰계산":
         await interaction.response.send_message("❌ 이 명령어는 **#블레이드볼-토큰계산** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -142,20 +142,21 @@ async def token_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-@bot.tree.command(name="티어등록", description="특정 유저의 점수/티어를 등록합니다.")
-async def register_tier(interaction: discord.Interaction, user: discord.Member, score: int):
+@bot.tree.command(name="티어등록", description="이름과 점수를 직접 입력해 순위에 등록합니다. (#korean-deathball-tier 전용)")
+@discord.app.commands.describe(name="등록할 유저 닉네임", score="점수 (숫자)")
+async def register_tier(interaction: discord.Interaction, name: str, score: int):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
-    deathball_tiers[user.id] = {
-        "name": user.display_name,
+    deathball_tiers[name] = {
+        "name": name,
         "score": score
     }
-    await interaction.response.send_message(f"✅ **{user.display_name}** 님의 점수가 **{score}점**으로 등록(갱신)되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ **{name}** 님의 점수가 **{score}점**으로 등록(갱신)되었습니다!", ephemeral=True)
 
 
-@bot.tree.command(name="티어순위", description="데스볼 티어 순위표를 보여줍니다.")
+@bot.tree.command(name="티어순위", description="데스볼 티어 순위표를 보여줍니다. (#korean-deathball-tier 전용)")
 async def show_leaderboard(interaction: discord.Interaction):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -165,6 +166,7 @@ async def show_leaderboard(interaction: discord.Interaction):
         await interaction.response.send_message("❌ 아직 등록된 티어/점수 정보가 없습니다. `/티어등록` 명령어로 먼저 등록해주세요!", ephemeral=True)
         return
 
+    # 점수 높은 순으로 정렬
     sorted_users = sorted(deathball_tiers.values(), key=lambda x: x["score"], reverse=True)
 
     description = ""
