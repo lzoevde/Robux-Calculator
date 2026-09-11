@@ -78,67 +78,77 @@ class TokenView(discord.ui.View):
 # ==========================================
 # 2. 모달(팝업창) 클래스 모음
 # ==========================================
-class RateModal(discord.ui.Modal, title="로벅스 환율 설정"):
+class RateModal(discord.ui.Modal, title="💎 로벅스 환율 설정"):
     rate = discord.ui.TextInput(label="1만원당 로벅스", placeholder="예: 1300")
     async def on_submit(self, interaction: discord.Interaction):
         user_rates[interaction.user.id] = int(self.rate.value.replace(",", "").strip())
-        await interaction.response.send_message("✅ 로벅스 환율 설정 완료!", ephemeral=True)
+        await interaction.response.send_message("✅ 로벅스 환율이 성공적으로 설정되었습니다!", ephemeral=True)
 
-class WonModal(discord.ui.Modal, title="원화 → 로벅스"):
+class WonModal(discord.ui.Modal, title="💰 원화 → 로벅스 계산"):
     won = discord.ui.TextInput(label="원화 금액", placeholder="예: 100000")
     async def on_submit(self, interaction: discord.Interaction):
         rate = user_rates.get(interaction.user.id, 1300)
         rbx = (int(self.won.value.replace(",", "").strip()) / 10000) * rate * 0.7
-        await interaction.response.send_message(f"💰 제공 R (수수료 반영): **{rbx:,.0f}R**", ephemeral=True)
+        await interaction.response.send_message(f"💰 수수료 반영 환전 결과: **{rbx:,.0f}R**", ephemeral=True)
 
-class RbxModal(discord.ui.Modal, title="로벅스 → 원화"):
+class RbxModal(discord.ui.Modal, title="💎 로벅스 → 원화 계산"):
     rbx = discord.ui.TextInput(label="로벅스 금액", placeholder="예: 130000")
     async def on_submit(self, interaction: discord.Interaction):
         rate = user_rates.get(interaction.user.id, 1300)
         won = (int(self.rbx.value.replace(",", "").strip()) / rate) * 10000
-        await interaction.response.send_message(f"💎 환전 원화: **{won:,.0f}원**", ephemeral=True)
+        await interaction.response.send_message(f"💵 환전 예상 원화: **{won:,.0f}원**", ephemeral=True)
 
-class TokenRateModal(discord.ui.Modal, title="토큰 환율 설정"):
+class TokenRateModal(discord.ui.Modal, title="⚔️ 토큰 환율 설정"):
     rate = discord.ui.TextInput(label="1,000 토큰당 가격 (원)", placeholder="예: 5000")
     async def on_submit(self, interaction: discord.Interaction):
         user_token_rates[interaction.user.id] = int(self.rate.value.replace(",", "").strip())
-        await interaction.response.send_message("✅ 토큰 환율 설정 완료!", ephemeral=True)
+        await interaction.response.send_message("✅ 토큰 환율이 성공적으로 설정되었습니다!", ephemeral=True)
 
-class WonToTokenModal(discord.ui.Modal, title="원화 → 토큰 계산"):
+class WonToTokenModal(discord.ui.Modal, title="💰 원화 → 토큰 계산"):
     won = discord.ui.TextInput(label="사용할 원화 금액", placeholder="예: 10000")
     async def on_submit(self, interaction: discord.Interaction):
         rate = user_token_rates.get(interaction.user.id, 5000)
         tokens = (int(self.won.value.replace(",", "").strip()) / rate) * 1000
-        await interaction.response.send_message(f"💰 받는 토큰: **{tokens:,.0f} T**", ephemeral=True)
+        await interaction.response.send_message(f"💰 획득 가능 토큰: **{tokens:,.0f} T**", ephemeral=True)
 
-class TokenToWonModal(discord.ui.Modal, title="토큰 → 원화 계산"):
+class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 → 원화 계산"):
     tokens = discord.ui.TextInput(label="계산할 토큰 수량", placeholder="예: 5000")
     async def on_submit(self, interaction: discord.Interaction):
         rate = user_token_rates.get(interaction.user.id, 5000)
         won = (int(self.tokens.value.replace(",", "").strip()) / 1000) * rate
-        await interaction.response.send_message(f"🪙 필요한 원화: **{won:,.0f}원**", ephemeral=True)
+        await interaction.response.send_message(f"🪙 필요 원화 금액: **{won:,.0f}원**", ephemeral=True)
 
 
 # ==========================================
 # 3. 봇 명령어 등록
 # ==========================================
-@bot.tree.command(name="로벅스메뉴", description="로벅스 계산기 메뉴")
+@bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 메뉴를 불러옵니다.")
 async def robux_menu(interaction: discord.Interaction):
     if interaction.channel.name != "robux-계산기":
         await interaction.response.send_message("❌ 이 명령어는 **#robux-계산기** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
-    embed = discord.Embed(title="💎 로벅스 계산기", description="로벅스 환율 설정 및 환산 메뉴입니다.", color=discord.Color.blue())
+    embed = discord.Embed(
+        title="💎 로벅스 환율 & 계산기", 
+        description="원하시는 버튼을 클릭하여 환율을 설정하거나 금액을 계산해 보세요.", 
+        color=discord.Color.from_rgb(88, 101, 242)
+    )
+    embed.set_footer(text="Robux Calculator System")
     await interaction.response.send_message(embed=embed, view=RobuxView())
 
 
-@bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 계산기 메뉴")
+@bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 시세 계산기 메뉴를 불러옵니다.")
 async def token_menu(interaction: discord.Interaction):
     if interaction.channel.name != "블레이드볼-토큰계산":
         await interaction.response.send_message("❌ 이 명령어는 **#블레이드볼-토큰계산** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
-    embed = discord.Embed(title="⚔️ 블레이드 볼 토큰 계산기", description="블레이드볼 토큰 시세 계산 메뉴입니다.", color=discord.Color.gold())
+    embed = discord.Embed(
+        title="⚔️ 블레이드 볼 토큰 계산기", 
+        description="토큰 시세 환율 설정 및 원화 환산 메뉴입니다.", 
+        color=discord.Color.from_rgb(254, 231, 92)
+    )
+    embed.set_footer(text="Blade Ball Token System")
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
@@ -148,7 +158,10 @@ async def register_tier(interaction: discord.Interaction, rank: int, name: str):
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
-    # 새로운 딕셔너리를 만들어 안전하게 순위 밀어내기 적용
+    if rank < 1:
+        await interaction.response.send_message("❌ 순위는 1 이상의 숫자로 입력해주세요!", ephemeral=True)
+        return
+
     new_tiers = {}
     for r, current_name in deathball_tiers.items():
         if r >= rank:
@@ -160,7 +173,7 @@ async def register_tier(interaction: discord.Interaction, rank: int, name: str):
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    await interaction.response.send_message(f"✅ **{rank}등**에 **{name}** 님이 등록되며, 그 아래 순위들이 한 칸씩 밀려났습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ **{rank}등**에 **{name}** 님이 등록되며, 하위 순위가 자동으로 밀려났습니다!", ephemeral=True)
 
 
 @bot.tree.command(name="티어제거", description="입력한 순위의 사람을 제거하고 아래 순위들을 한 칸씩 앞으로 당깁니다.")
@@ -175,7 +188,6 @@ async def remove_tier(interaction: discord.Interaction, rank: int):
 
     removed_name = deathball_tiers.pop(rank)
     
-    # 새로운 딕셔너리를 만들어 안전하게 순위 당기기 적용
     new_tiers = {}
     for r, current_name in deathball_tiers.items():
         if r > rank:
@@ -186,17 +198,27 @@ async def remove_tier(interaction: discord.Interaction, rank: int):
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    await interaction.response.send_message(f"🗑️ **{rank}등**({removed_name} 님)이 제거되었으며, 아래 순위들이 한 칸씩 당겨졌습니다!", ephemeral=True)
+    await interaction.response.send_message(f"🗑️ **{rank}등**({removed_name} 님)이 제거되었고, 하위 순위가 앞으로 당겨졌습니다!", ephemeral=True)
 
 
-@bot.tree.command(name="티어순위", description="데스볼 티어 순위표를 보여줍니다.")
+@bot.tree.command(name="티어초기화", description="등록된 모든 티어 순위 데이터를 초기화합니다.")
+async def reset_tier(interaction: discord.Interaction):
+    if interaction.channel.name != "korean-deathball-tier":
+        await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    deathball_tiers.clear()
+    await interaction.response.send_message("⚠️ 모든 티어 순위표 데이터가 초기화되었습니다.", ephemeral=True)
+
+
+@bot.tree.command(name="티어순위", description="세련된 디자인의 데스볼 티어 순위표를 보여줍니다.")
 async def show_leaderboard(interaction: discord.Interaction):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
     if not deathball_tiers:
-        await interaction.response.send_message("❌ 아직 등록된 순위 정보가 없습니다. `/티어등록` 명령어로 먼저 등록해주세요!", ephemeral=True)
+        await interaction.response.send_message("❌ 아직 등록된 순위 정보가 없습니다. `/티어등록` 명령어로 순위를 추가해보세요!", ephemeral=True)
         return
 
     sorted_ranks = sorted(deathball_tiers.keys())
@@ -209,15 +231,17 @@ async def show_leaderboard(interaction: discord.Interaction):
         if rank <= 3:
             rank_icon = medals[rank - 1]
         else:
-            rank_icon = f"`[{rank}]`"  # 4등부터 대괄호 정렬 디자인 유지
+            rank_icon = f"`[{rank:2d}]`"  # 자릿수를 맞춰 깔끔하게 정렬
             
-        description += f"{rank_icon} **{name}**\n"
+        description += f"{rank_icon}  **{name}**\n"
 
     embed = discord.Embed(
         title="🏆 Korean Deathball Leaderboard",
         description=description,
         color=discord.Color.from_rgb(255, 69, 0)
     )
+    embed.add_field(name="📊 총 등록 인원", value=f"**{len(deathball_tiers)}명** 참가 중", inline=False)
+    embed.set_footer(text="Updated Live • Deathball Tier System")
     
     await interaction.response.send_message(embed=embed)
 
