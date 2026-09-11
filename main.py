@@ -84,12 +84,29 @@ class RateModal(discord.ui.Modal, title="💎 로벅스 환율 설정"):
         user_rates[interaction.user.id] = int(self.rate.value.replace(",", "").strip())
         await interaction.response.send_message("✅ 로벅스 환율이 성공적으로 설정되었습니다!", ephemeral=True)
 
-class WonModal(discord.ui.Modal, title="💰 원화 → 로벅스 계산"):
-    won = discord.ui.TextInput(label="원화 금액", placeholder="예: 100000")
+class WonModal(discord.ui.Modal, title="💰 원화 → 로벅스 비교 계산"):
+    won = discord.ui.TextInput(label="원화 금액", placeholder="예: 50000")
     async def on_submit(self, interaction: discord.Interaction):
+        won_val = int(self.won.value.replace(",", "").strip())
         rate = user_rates.get(interaction.user.id, 1300)
-        rbx = (int(self.won.value.replace(",", "").strip()) / 10000) * rate * 0.7
-        await interaction.response.send_message(f"💰 수수료 반영 환전 결과: **{rbx:,.0f}R**", ephemeral=True)
+        
+        # 1. 탭 방식 환전 계산 (수수료 30% 반영)
+        tab_rbx = (won_val / 10000) * rate * 0.7
+        
+        # 2. 공식 홈페이지 기준 계산 (1.5만원당 1000로벅스 -> 1원당 1000/15000 로벅스)
+        official_rbx = won_val * (1000 / 15000)
+        
+        # 3. 차이 계산 (이득 비교)
+        diff_rbx = tab_rbx - official_rbx
+        percent_diff = ((tab_rbx - official_rbx) / official_rbx) * 100 if official_rbx > 0 else 0
+        
+        msg = (
+            f"💰 **입력 금액: {won_val:,}원**\n\n"
+            f"📌 **공식 홈페이지 구매 시:** 약 `{official_rbx:,.0f}R`\n"
+            f"🚀 **현재 탭 방식(환율 적용):** 수수료 반영 후 **`{tab_rbx:,.0f}R`**\n\n"
+            f"✨ **비교 결과:** 공홈보다 **`{diff_rbx:+,.0f}R`** (`{percent_diff:+.1f}%`) 더 이득입니다!"
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
 
 class RbxModal(discord.ui.Modal, title="💎 로벅스 → 원화 계산"):
     rbx = discord.ui.TextInput(label="로벅스 금액", placeholder="예: 130000")
@@ -129,8 +146,8 @@ async def robux_menu(interaction: discord.Interaction):
         return
 
     embed = discord.Embed(
-        title="💎 로벅스 환율 & 계산기", 
-        description="원하시는 버튼을 클릭하여 환율을 설정하거나 금액을 계산해 보세요.", 
+        title="💎 로벅스 환율 & 공홈 비교 계산기", 
+        description="원하시는 버튼을 클릭하여 환율을 설정하거나 공홈 대비 이득을 계산해 보세요.", 
         color=discord.Color.from_rgb(88, 101, 242)
     )
     embed.set_footer(text="Robux Calculator System")
@@ -231,7 +248,7 @@ async def show_leaderboard(interaction: discord.Interaction):
         if rank <= 3:
             rank_icon = medals[rank - 1]
         else:
-            rank_icon = f"`[{rank:2d}]`"  # 자릿수를 맞춰 깔끔하게 정렬
+            rank_icon = f"`[{rank:2d}]`"
             
         description += f"{rank_icon}  **{name}**\n"
 
