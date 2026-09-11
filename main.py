@@ -9,7 +9,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # 데이터 저장용 딕셔너리들
 user_rates = {}        # 로벅스 환율
 user_token_rates = {}  # 블레이드볼 토큰 환율
-deathball_tiers = {}   # 데스볼 티어/점수 데이터
+deathball_tiers = {}   # 데스볼 티어/순위 데이터
 
 
 @bot.event
@@ -142,17 +142,14 @@ async def token_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-@bot.tree.command(name="티어등록", description="이름과 점수를 직접 입력해 순위에 등록합니다.")
-async def register_tier(interaction: discord.Interaction, name: str, score: int):
+@bot.tree.command(name="티어등록", description="순위 번호와 이름을 직접 입력해 등록합니다.")
+async def register_tier(interaction: discord.Interaction, rank: int, name: str):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
-    deathball_tiers[name] = {
-        "name": name,
-        "score": score
-    }
-    await interaction.response.send_message(f"✅ **{name}** 님의 점수가 **{score}점**으로 등록(갱신)되었습니다!", ephemeral=True)
+    deathball_tiers[rank] = name
+    await interaction.response.send_message(f"✅ **{rank}등**에 **{name}** 님이 등록되었습니다!", ephemeral=True)
 
 
 @bot.tree.command(name="티어순위", description="데스볼 티어 순위표를 보여줍니다.")
@@ -162,17 +159,22 @@ async def show_leaderboard(interaction: discord.Interaction):
         return
 
     if not deathball_tiers:
-        await interaction.response.send_message("❌ 아직 등록된 티어/점수 정보가 없습니다. `/티어등록` 명령어로 먼저 등록해주세요!", ephemeral=True)
+        await interaction.response.send_message("❌ 아직 등록된 순위 정보가 없습니다. `/티어등록` 명령어로 먼저 등록해주세요!", ephemeral=True)
         return
 
-    sorted_users = sorted(deathball_tiers.values(), key=lambda x: x["score"], reverse=True)
+    sorted_ranks = sorted(deathball_tiers.keys())
 
     description = ""
     medals = ["🥇", "🥈", "🥉"]
     
-    for idx, data in enumerate(sorted_users, start=1):
-        rank_icon = medals[idx - 1] if idx <= 3 else f"`{idx}.`"
-        description += f"{rank_icon} **{data['name']}** — {data['score']}점\n"
+    for rank in sorted_ranks:
+        name = deathball_tiers[rank]
+        if rank <= 3:
+            rank_icon = medals[rank - 1]
+        else:
+            rank_icon = f"`[{rank}]`"  # 4등부터는 보기 좋게 대괄호 디자인 적용
+            
+        description += f"{rank_icon} **{name}**\n"
 
     embed = discord.Embed(
         title="🏆 Korean Deathball Leaderboard",
