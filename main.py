@@ -142,14 +142,22 @@ async def token_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-@bot.tree.command(name="티어등록", description="순위 번호와 이름을 직접 입력해 등록합니다.")
+@bot.tree.command(name="티어등록", description="순위 번호와 이름을 입력하면 해당 순위부터 아래로 한 칸씩 밀려납니다.")
 async def register_tier(interaction: discord.Interaction, rank: int, name: str):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
+    # 입력한 순위(rank) 이상인 기존 등수를 뒤로 한 칸씩 밀어냄 (역순으로 순회해야 덮어씌워지지 않음)
+    current_ranks = sorted(deathball_tiers.keys(), reverse=True)
+    for r in current_ranks:
+        if r >= rank:
+            deathball_tiers[r + 1] = deathball_tiers[r]
+
+    # 새로운 사람을 해당 순위에 배치
     deathball_tiers[rank] = name
-    await interaction.response.send_message(f"✅ **{rank}등**에 **{name}** 님이 등록되었습니다!", ephemeral=True)
+    
+    await interaction.response.send_message(f"✅ **{rank}등**에 **{name}** 님이 등록되며, 그 아래 순위들이 한 칸씩 밀려났습니다!", ephemeral=True)
 
 
 @bot.tree.command(name="티어순위", description="데스볼 티어 순위표를 보여줍니다.")
@@ -172,7 +180,7 @@ async def show_leaderboard(interaction: discord.Interaction):
         if rank <= 3:
             rank_icon = medals[rank - 1]
         else:
-            rank_icon = f"`[{rank}]`"  # 4등부터는 보기 좋게 대괄호 디자인 적용
+            rank_icon = f"`[{rank}]`"  # 4등부터는 대괄호 정렬 디자인
             
         description += f"{rank_icon} **{name}**\n"
 
