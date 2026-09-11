@@ -9,6 +9,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # 데이터 저장용 딕셔너리들
 user_rates = {}        # 로벅스 환율
 user_token_rates = {}  # 블레이드볼 토큰 환율
+deathball_tiers = {}   # 데스볼 티어/점수 데이터 ({user_id: {"name": 닉네임, "score": 점수}})
 
 
 @bot.event
@@ -106,7 +107,53 @@ async def token_menu(interaction: discord.Interaction):
 
 
 # ==========================================
-# 3. 모달(팝업창) 클래스 모음
+# 3. 데스볼 티어 및 순위표 명령어 (#korean-deathball-tier 전용)
+# ==========================================
+@bot.tree.command(name="티어등록", description="특정 유저의 점수/티어를 등록합니다. (#korean-deathball-tier 전용)")
+@discord.app.commands.describe(user="점수를 등록할 유저", score="점수 또는 수치 (숫자)")
+async def register_tier(interaction: discord.Interaction, user: discord.Member, score: int):
+    if interaction.channel.name != "korean-deathball-tier":
+        await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    deathball_tiers[user.id] = {
+        "name": user.display_name,
+        "score": score
+    }
+    await interaction.response.send_message(f"✅ **{user.display_name}** 님의 점수가 **{score}점**으로 등록(갱신)되었습니다!", ephemeral=True)
+
+
+@bot.tree.command(name="티어순위", description="데스볼 티어 순위표를 보여줍니다. (#korean-deathball-tier 전용)")
+async def show_leaderboard(interaction: discord.Interaction):
+    if interaction.channel.name != "korean-deathball-tier":
+        await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    if not deathball_tiers:
+        await interaction.response.send_message("❌ 아직 등록된 티어/점수 정보가 없습니다. `/티어등록` 명령어로 먼저 등록해주세요!", ephemeral=True)
+        return
+
+    # 점수 높은 순으로 정렬
+    sorted_users = sorted(deathball_tiers.values(), key=lambda x: x["score"], reverse=True)
+
+    description = ""
+    medals = ["🥇", "🥈", "🥉"]
+    
+    for idx, data in enumerate(sorted_users, start=1):
+        rank_icon = medals[idx - 1] if idx <= 3 else f"`{idx}.`"
+        description += f"{rank_icon} **{data['name']}** — {data['score']}점\n"
+
+    embed = discord.Embed(
+        title="🏆 Korean Deathball Leaderboard",
+        description=description,
+        color=discord.Color.from_rgb(255, 69, 0)
+    )
+    
+    await interaction.response.send_message(embed=embed)
+
+
+# ==========================================
+# 4. 모달(팝업창) 클래스 모음
 # ==========================================
 class RateModal(discord.ui.Modal, title="로벅스 환율 설정"):
     rate = discord.ui.TextInput(label="1만원당 로벅스", placeholder="예: 1300")
