@@ -167,7 +167,7 @@ async def token_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-@bot.tree.command(name="티어등록", description="한국 데스볼 순위 번호와 이름을 등록합니다.")
+@bot.tree.command(name="티어등록", description="한국 데스볼 순위 번호와 이름을 등록하고 순위표를 바로 띄웁니다.")
 async def register_tier(interaction: discord.Interaction, rank: int, name: str):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -188,10 +188,27 @@ async def register_tier(interaction: discord.Interaction, rank: int, name: str):
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    await interaction.response.send_message(f"✅ 한국 티어 **{rank}등**에 **{name}** 님이 등록되며, 하위 순위가 자동으로 밀려났습니다!", ephemeral=True)
+    # 등록 즉시 최신 순위표 Embed 생성
+    sorted_ranks = sorted(deathball_tiers.keys())
+    description = f"✅ **{rank}등**에 **{name}** 님이 등록되었습니다!\n\n"
+    medals = ["🥇", "🥈", "🥉"]
+    for r in sorted_ranks:
+        n = deathball_tiers.get(r)
+        rank_icon = medals[r - 1] if r <= 3 else f"`[{r:2d}]`"
+        description += f"{rank_icon}  **{n}**\n"
+
+    embed = discord.Embed(
+        title="🏆 Korean Deathball Leaderboard",
+        description=description,
+        color=discord.Color.from_rgb(255, 69, 0)
+    )
+    embed.add_field(name="📊 총 등록 인원", value=f"**{len(deathball_tiers)}명** 참가 중", inline=False)
+    embed.set_footer(text="Updated Live • Korean Tier System")
+
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="티어제거", description="한국 데스볼 지정 순위의 사람을 제거합니다.")
+@bot.tree.command(name="티어제거", description="한국 데스볼 지정 순위의 사람을 제거하고 순위표를 바로 띄웁니다.")
 async def remove_tier(interaction: discord.Interaction, rank: int):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -213,7 +230,24 @@ async def remove_tier(interaction: discord.Interaction, rank: int):
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    await interaction.response.send_message(f"🗑️ 한국 티어 **{rank}등**({removed_name} 님)이 제거되었습니다!", ephemeral=True)
+    # 제거 즉시 최신 순위표 Embed 생성
+    sorted_ranks = sorted(deathball_tiers.keys())
+    description = f"🗑️ **{rank}등**({removed_name} 님)이 제거되었습니다!\n\n"
+    medals = ["🥇", "🥈", "🥉"]
+    for r in sorted_ranks:
+        n = deathball_tiers.get(r)
+        rank_icon = medals[r - 1] if r <= 3 else f"`[{r:2d}]`"
+        description += f"{rank_icon}  **{n}**\n"
+
+    embed = discord.Embed(
+        title="🏆 Korean Deathball Leaderboard",
+        description=description,
+        color=discord.Color.from_rgb(255, 69, 0)
+    )
+    embed.add_field(name="📊 총 등록 인원", value=f"**{len(deathball_tiers)}명** 참가 중", inline=False)
+    embed.set_footer(text="Updated Live • Korean Tier System")
+
+    await interaction.response.send_message(embed=embed)
 
 
 @bot.tree.command(name="티어초기화", description="한국 데스볼 티어 순위표 데이터를 초기화합니다.")
@@ -260,9 +294,9 @@ async def show_leaderboard(interaction: discord.Interaction):
 
 
 # ==========================================
-# 4. 일본 유저 티어 명령어 (수정 완료)
+# 4. 일본 유저 티어 명령어 (등록/제거 시 순위표 바로 출력)
 # ==========================================
-@bot.tree.command(name="일본유저티어등록", description="일본 데스볼 유저 순위 번호와 이름을 등록합니다.")
+@bot.tree.command(name="일본유저티어등록", description="일본 데스볼 유저를 등록하고 순위표를 바로 띄웁니다.")
 async def register_jp_tier(interaction: discord.Interaction, rank: int, name: str):
     if interaction.channel.name != "japanesed-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#japanesed-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -281,12 +315,29 @@ async def register_jp_tier(interaction: discord.Interaction, rank: int, name: st
 
     new_tiers[rank] = name
     japanese_tiers.clear()
-    japanese_tiers.update(new_tiers)  # 👈 수정 완료 (deathball_tiers -> japanese_tiers)
+    japanese_tiers.update(new_tiers)
 
-    await interaction.response.send_message(f"✅ 일본 유저 티어 **{rank}등**에 **{name}** 님이 등록되며, 하위 순위가 자동으로 밀려났습니다!", ephemeral=True)
+    # 등록 즉시 최신 순위표 Embed 생성
+    sorted_ranks = sorted(japanese_tiers.keys())
+    description = f"✅ 일본 유저 **{rank}등**에 **{name}** 님이 등록되었습니다!\n\n"
+    medals = ["🥇", "🥈", "🥉"]
+    for r in sorted_ranks:
+        n = japanese_tiers.get(r)
+        rank_icon = medals[r - 1] if r <= 3 else f"`[{r:2d}]`"
+        description += f"{rank_icon}  **{n}**\n"
+
+    embed = discord.Embed(
+        title="🏆 Japanese User Deathball Leaderboard",
+        description=description,
+        color=discord.Color.from_rgb(255, 105, 180)
+    )
+    embed.add_field(name="📊 총 등록 인원", value=f"**{len(japanese_tiers)}명** 참가 중", inline=False)
+    embed.set_footer(text="Updated Live • Japanese User Tier System")
+
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="일본유저티어제거", description="일본 데스볼 지정 순위의 유저를 제거합니다.")
+@bot.tree.command(name="일본유저티어제거", description="일본 데스볼 유저를 제거하고 순위표를 바로 띄웁니다.")
 async def remove_jp_tier(interaction: discord.Interaction, rank: int):
     if interaction.channel.name != "japanesed-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#japanesed-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -296,7 +347,7 @@ async def remove_jp_tier(interaction: discord.Interaction, rank: int):
         await interaction.response.send_message(f"❌ 일본 유저 티어 **{rank}등**에 등록된 사용자가 없습니다!", ephemeral=True)
         return
 
-    removed_name = japanese_tiers.pop(rank)  # 👈 수정 완료
+    removed_name = japanese_tiers.pop(rank)
     
     new_tiers = {}
     for r, current_name in japanese_tiers.items():
@@ -306,9 +357,26 @@ async def remove_jp_tier(interaction: discord.Interaction, rank: int):
             new_tiers[r] = current_name
 
     japanese_tiers.clear()
-    japanese_tiers.update(new_tiers)  # 👈 수정 완료
+    japanese_tiers.update(new_tiers)
 
-    await interaction.response.send_message(f"🗑️ 일본 유저 티어 **{rank}등**({removed_name} 님)이 제거되었습니다!", ephemeral=True)
+    # 제거 즉시 최신 순위표 Embed 생성
+    sorted_ranks = sorted(japanese_tiers.keys())
+    description = f"🗑️ 일본 유저 **{rank}등**({removed_name} 님)이 제거되었습니다!\n\n"
+    medals = ["🥇", "🥈", "🥉"]
+    for r in sorted_ranks:
+        n = japanese_tiers.get(r)
+        rank_icon = medals[r - 1] if r <= 3 else f"`[{r:2d}]`"
+        description += f"{rank_icon}  **{n}**\n"
+
+    embed = discord.Embed(
+        title="🏆 Japanese User Deathball Leaderboard",
+        description=description,
+        color=discord.Color.from_rgb(255, 105, 180)
+    )
+    embed.add_field(name="📊 총 등록 인원", value=f"**{len(japanese_tiers)}명** 참가 중", inline=False)
+    embed.set_footer(text="Updated Live • Japanese User Tier System")
+
+    await interaction.response.send_message(embed=embed)
 
 
 @bot.tree.command(name="일본유저티어초기화", description="일본 데스볼 유저 티어 순위표 데이터를 초기화합니다.")
