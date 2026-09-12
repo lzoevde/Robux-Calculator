@@ -22,9 +22,19 @@ deathball_tiers = {}     # 한국 데스볼 티어 순위표
 matchup_participants = set() # 내전 참가자 명단
 command_queue = []       # 로블록스 전송용 명령어 대기열
 
+# 🗺️ 데스볼 맵 리스트
+deathball_maps = ["클래식 아레나", "네온 시티", "볼케이노"]
+
+# 전역 aiohttp 세션 (세션 충돌 및 크래시 방지)
+http_session: aiohttp.ClientSession = None
+
 
 @bot.event
 async def on_ready():
+    global http_session
+    if http_session is None or http_session.closed:
+        http_session = aiohttp.ClientSession()
+
     print(f"========================================")
     print(f"✅ 로그인 성공: {bot.user}")
     print(f"🚀 디스코드 봇이 정상적으로 가동되었습니다.")
@@ -49,14 +59,18 @@ def get_command():
 
 
 # ==========================================
-# 🛠️ 로블록스 프로필 조회 함수
+# 🛠️ 로블록스 프로필 조회 함수 (안정성 강화)
 # ==========================================
 async def get_roblox_user_info(username: str):
-    async with aiohttp.ClientSession() as session:
+    global http_session
+    if http_session is None or http_session.closed:
+        http_session = aiohttp.ClientSession()
+
+    try:
         url_search = "https://users.roblox.com/v1/usernames/users"
         payload = {"usernames": [username], "excludeBannedUsers": True}
         
-        async with session.post(url_search, json=payload) as resp:
+        async with http_session.post(url_search, json=payload) as resp:
             if resp.status != 200:
                 return None
             data = await resp.json()
@@ -71,7 +85,7 @@ async def get_roblox_user_info(username: str):
         url_detail = f"https://users.roblox.com/v1/users/{user_id}"
         created_at_str = "정보 없음"
         account_age_days = 0
-        async with session.get(url_detail) as resp:
+        async with http_session.get(url_detail) as resp:
             if resp.status == 200:
                 detail_data = await resp.json()
                 raw_date = detail_data.get("created")
@@ -82,7 +96,7 @@ async def get_roblox_user_info(username: str):
 
         url_avatar = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
         avatar_url = None
-        async with session.get(url_avatar) as resp:
+        async with http_session.get(url_avatar) as resp:
             if resp.status == 200:
                 avatar_data = await resp.json()
                 if avatar_data.get("data"):
@@ -99,15 +113,24 @@ async def get_roblox_user_info(username: str):
             "created_at": created_at_str,
             "age_days": account_age_days
         }
+    except Exception as e:
+        print(f"❌ Roblox API 오류: {e}")
+        return None
 
 
 async def get_latest_username_by_id(user_id: int):
-    async with aiohttp.ClientSession() as session:
+    global http_session
+    if http_session is None or http_session.closed:
+        http_session = aiohttp.ClientSession()
+
+    try:
         url_detail = f"https://users.roblox.com/v1/users/{user_id}"
-        async with session.get(url_detail) as resp:
+        async with http_session.get(url_detail) as resp:
             if resp.status == 200:
                 data = await resp.json()
                 return data.get("name"), data.get("displayName")
+    except Exception:
+        pass
     return None, None
 
 
@@ -322,14 +345,46 @@ async def tournament_matchup(interaction: discord.Interaction, players: str):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="맵추천", description="데스볼 플레이 맵을 무작위로 추첨해 줍니다.")
+# --- 🗺️ 데스볼 맵 관리 및 추천 명령어 ---
+@bot.tree.command(name="맵추천", description="등록된 데스볼 맵 중 하나를 무작위로 추첨해 줍니다.")
 async def recommend_map(interaction: discord.Interaction):
     if interaction.channel.name != "데스볼-맵-추천":
         await interaction.response.send_message("❌ 이 명령어는 **#데스볼-맵-추천** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
-    maps = ["🏟️ 클래식 아레나", "⚡ 네온 시티", "🔥 볼케이노 스테이지", "❄️ 프로즌 글레이셔", "🌌 스페이스 스테이션"]
-    embed = discord.Embed(title="🗺️ 데스볼 랜덤 맵 추첨 결과", description=f"# **{random.choice(maps)}**", color=discord.Color.green())
+    if not deathball_maps:
+        await interaction.response.send_message("❌ 등록된 맵이 없습니다. `/맵추가` 명령어로 먼저 맵을 등록해주세요!", ephemeral=True)
+        return
+    chosen_map = random.choice(deathball_maps)
+    embed = discord.Embed(title="🗺️ 데스볼 랜덤 맵 추첨 결과", description=f"# **🏟️ {chosen_map}**", color=discord.Color.green())
     await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="맵추가", description="추첨 풀에 새로운 데스볼 맵을 추가합니다.")
+async def add_map(interaction: discord.Interaction, map_name: str):
+    if map_name in deathball_maps:
+        await interaction.response.send_message(f"⚠️ **{map_name}** 맵은 이미 목록에 존재합니다!", ephemeral=True)
+        return
+    deathball_maps.append(map_name)
+    await interaction.response.send_message(f"✅ 새로운 맵 **'{map_name}'**이(가) 추가되었습니다! (현재 총 {len(deathball_maps)}개 맵)", ephemeral=True)
+
+
+@bot.tree.command(name="맵삭제", description="등록된 데스볼 맵을 목록에서 제거합니다.")
+async def remove_map(interaction: discord.Interaction, map_name: str):
+    if map_name in deathball_maps:
+        deathball_maps.remove(map_name)
+        await interaction.response.send_message(f"🗑️ **'{map_name}'** 맵이 목록에서 제거되었습니다.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ 목록에 **'{map_name}'** 맵이 존재하지 않습니다.", ephemeral=True)
+
+
+@bot.tree.command(name="맵목록", description="현재 등록된 모든 데스볼 맵 목록을 확인합니다.")
+async def list_maps(interaction: discord.Interaction):
+    if not deathball_maps:
+        await interaction.response.send_message("❌ 등록된 맵이 없습니다.", ephemeral=True)
+        return
+    map_str = "\n".join([f"• `{m}`" for m in deathball_maps])
+    embed = discord.Embed(title="📋 등록된 데스볼 맵 목록", description=map_str, color=discord.Color.blurple())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="내전등록메뉴", description="버튼으로 참가자를 모집하는 내전 등록 패널을 생성합니다.")
@@ -380,7 +435,7 @@ async def deathball_korean_lookup(interaction: discord.Interaction, roblox_usern
 
 
 # ==========================================
-# 🏆 닉네임 자동 동기화 티어 시스템 (타임아웃 방지 최적화)
+# 🏆 닉네임 자동 동기화 티어 시스템
 # ==========================================
 async def generate_tier_embed(tiers_dict, title, color_val, thumbnail_url=None):
     if not tiers_dict:
@@ -482,7 +537,6 @@ async def send_notice(ctx, *, message: str):
 @bot.command(name="청소")
 @commands.has_permissions(manage_messages=True)
 async def clear_messages(ctx, amount: int = 10):
-    """채팅창의 메시지를 지정한 개수만큼 깔끔하게 삭제합니다. (기본 10개)"""
     await ctx.message.delete()
     deleted = await ctx.channel.purge(limit=amount)
     msg = await ctx.send(f"🧹 최근 메시지 **{len(deleted)}개**를 말끔히 청소했습니다!")
@@ -491,9 +545,10 @@ async def clear_messages(ctx, amount: int = 10):
 
 
 # ==========================================
-# 🚀 봇 및 웹서버 통합 실행
+# 🚀 봇 및 웹서버 통합 실행 (종료 시 세션 정리 추가)
 # ==========================================
 async def main():
+    global http_session
     threading.Thread(
         target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
     ).start()
@@ -503,8 +558,12 @@ async def main():
         print("❌ DISCORD_TOKEN이 환경 변수에 설정되지 않았습니다!")
         return
 
-    async with bot:
-        await bot.start(token)
+    try:
+        async with bot:
+            await bot.start(token)
+    finally:
+        if http_session and not http_session.closed:
+            await http_session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
