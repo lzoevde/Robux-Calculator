@@ -2,6 +2,7 @@ import os
 import aiohttp
 import discord
 from discord.ext import commands
+from datetime import datetime
 
 # Intents 설정
 intents = discord.Intents.all()
@@ -25,10 +26,9 @@ async def on_ready():
 
 
 # ==========================================
-# 🛠️ 로블록스 API: 닉네임으로 아바타 이미지 & 정확한 이름 가져오기
+# 🛠️ 로블록스 통합 API: 닉네임 검색, 아바타, 생성일, 접속 게임, 닉네임 이력
 # ==========================================
 async def get_roblox_user_info(username: str):
-    """로블록스 닉네임으로 User ID를 찾고, 아바타 썸네일과 정확한 이름을 가져오는 함수"""
     async with aiohttp.ClientSession() as session:
         # 1. 닉네임으로 User ID 검색
         url_search = "https://users.roblox.com/v1/usernames/users"
@@ -36,28 +36,80 @@ async def get_roblox_user_info(username: str):
         
         async with session.post(url_search, json=payload) as resp:
             if resp.status != 200:
-                return None, None
+                return None
             data = await resp.json()
             if not data.get("data"):
-                return None, None
+                return None
             
             user_info = data["data"][0]
             user_id = user_info["id"]
             real_name = user_info["name"]
             display_name = user_info.get("displayName", real_name)
 
-        # 2. User ID로 아바타 렌더링 이미지(썸네일) 가져오기
+        # 2. 유저 상세 정보 (계정 생성일 등) 가져오기
+        url_detail = f"https://users.roblox.com/v1/users/{user_id}"
+        created_at_str = "정보 없음"
+        account_age_days = 0
+        async with session.get(url_detail) as resp:
+            if resp.status == 200:
+                detail_data = await resp.json()
+                raw_date = detail_data.get("created")
+                if raw_date:
+                    dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                    created_at_str = dt.strftime("%Y년 %m월 %d일")
+                    account_age_days = (datetime.now(dt.tzinfo) - dt).days
+
+        # 3. 아바타 썸네일 가져오기
         url_avatar = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
+        avatar_url = None
         async with session.get(url_avatar) as resp:
-            if resp.status != 200:
-                return f"{real_name} (@{display_name})", None
-            avatar_data = await resp.json()
-            if not avatar_data.get("data"):
-                return f"{real_name} (@{display_name})", None
-            
-            avatar_url = avatar_data["data"][0]["imageUrl"]
-            
-        return f"{real_name} (@{display_name})", avatar_url
+            if resp.status == 200:
+                avatar_data = await resp.json()
+                if avatar_data.get("data"):
+                    avatar_url = avatar_data["data"][0]["imageUrl"]
+
+        # 4. 현재 접속 중인 게임(플레이 상태) 가져오기
+        url_presence = "https://presence.roblox.com/v1/presence/users"
+        presence_payload = {"userIds": [user_id]}
+        current_game = "offline (접속 중 아님)"
+        async with session.post(url_presence, json=presence_payload) as resp:
+            if resp.status == 200:
+                p_data = await resp.json()
+                if p_data.get("presenceNotifications") or p_data.get("userPresences"):
+                    presences = p_data.get("userPresences", [])
+                    if presences:
+                        p_type = presences[0].get("userPresenceType")
+                        # 0: Offline, 1: Online, 2: InGame, 3: InStudio
+                        if p_type == 2:
+                            game_name = presences[0].get("lastLocation", "알 수 없는 장소")
+                            current_game = f"🎮 플레이 중: {game_name}"
+                        elif p_type == 1:
+                            current_game = "🟢 온라인 (로비/웹 접속 중)"
+                        else:
+                            current_game = "⚪ 오프라인"
+
+        # 5. 이전 닉네임(변경 이력) 가져오기
+        url_history = f"https://users.roblox.com/v1/users/{user_id}/username-history?limit=10&sortOrder=Desc"
+        past_names = []
+        async with session.get(url_history) as resp:
+            if resp.status == 200:
+                h_data = await resp.json()
+                items = h_data.get("data", [])
+                if items:
+                    past_names = [item.get("name") for item in items[:3]] # 최근 3개까지만
+
+        profile_url = f"https://www.roblox.com/users/{user_id}/profile"
+
+        return {
+            "real_name": real_name,
+            "display_name": display_name,
+            "profile_url": profile_url,
+            "avatar_url": avatar_url,
+            "created_at": created_at_str,
+            "age_days": account_age_days,
+            "current_game": current_game,
+            "past_names": past_names
+        }
 
 
 # ==========================================
@@ -111,6 +163,13 @@ class TokenView(discord.ui.View):
             await interaction.response.send_message(f"현재 설정된 토큰 환율: **1,000 토큰당 {user_token_rates[user_id]:,}원**", ephemeral=True)
         else:
             await interaction.response.send_message("❌ 아직 토큰 환율을 설정하지 않았습니다.\n'토큰 환율 설정' 버튼을 클릭해주세요.", ephemeral=True)
+
+
+# 프로필 바로가기 URL 버튼을 포함하는 뷰 클래스
+class RobloxProfileView(discord.ui.View):
+    def __init__(self, profile_url: str):
+        super().__init__(timeout=None)
+        self.add_item(discord.ui.Button(label="🔗 로블록스 공식 프로필 바로가기", style=discord.ButtonStyle.link, url=profile_url))
 
 
 class RateModal(discord.ui.Modal, title="💎 로벅스 환율 설정"):
@@ -167,7 +226,7 @@ class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 → 원화 계산")
 
 
 # ==========================================
-# 2. 기능별 채널 명령어 모음
+# 2. 채널 명령어 모음
 # ==========================================
 @bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 메뉴를 불러옵니다.")
 async def robux_menu(interaction: discord.Interaction):
@@ -199,8 +258,8 @@ async def token_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-# --- #roblox-id 채널 전용 조회 기능 ---
-@bot.tree.command(name="로블록스조회", description="로블록스 닉네임을 입력하여 프로필 정보와 아바타를 조회합니다.")
+# --- #roblox-id 채널 전용 종합 조회 기능 ---
+@bot.tree.command(name="로블록스조회", description="로블록스 유저의 프로필, 생성일, 접속 상태, 닉네임 이력을 조회합니다.")
 async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     if interaction.channel.name != "roblox-id":
         await interaction.response.send_message("❌ 이 명령어는 **#roblox-id** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -208,25 +267,34 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
 
     await interaction.response.defer()
 
-    user_display, avatar_url = await get_roblox_user_info(roblox_username)
-    if not user_display:
+    info = await get_roblox_user_info(roblox_username)
+    if not info:
         await interaction.followup.send(f"❌ '{roblox_username}'은(는) 존재하지 않는 로블록스 유저이거나 탈퇴한 계정입니다.", ephemeral=True)
         return
 
+    past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
+
     embed = discord.Embed(
-        title="🔍 로블록스 유저 프로필 조회",
-        description=f"입력하신 닉네임의 검색 결과입니다.\n\n👤 **계정 정보:** `{user_display}`",
+        title=f"🔍 로블록스 유저 프로필: {info['real_name']}",
         color=discord.Color.from_rgb(0, 162, 255)
     )
-    if avatar_url:
-        embed.set_thumbnail(url=avatar_url)
-    embed.set_footer(text="Roblox ID Lookup System")
+    embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
+    embed.add_field(name="📅 계정 생성일", value=f"{info['created_at']}\n(가입한 지 **{info['age_days']:,}일**째)", inline=True)
+    embed.add_field(name="🟢 접속 상태", value=info['current_game'], inline=False)
+    embed.add_field(name="🔤 이전 닉네임 이력", value=past_str, inline=False)
 
-    await interaction.followup.send(embed=embed)
+    if info['avatar_url']:
+        embed.set_thumbnail(url=info['avatar_url'])
+    
+    embed.set_footer(text="Roblox Advanced Lookup System")
+
+    # 프로필 바로가기 URL 버튼 부착
+    view = RobloxProfileView(info['profile_url'])
+    await interaction.followup.send(embed=embed, view=view)
 
 
 # --- 한국 데스볼 티어 채널 (#korean-deathball-tier) ---
-@bot.tree.command(name="티어등록", description="로블록스 닉네임을 입력하여 한국 티어에 등록하고 순위표를 바로 띄웁니다.")
+@bot.tree.command(name="티어등록", description="로블록스 닉네임을 입력하여 한국 티어에 등록합니다.")
 async def register_tier(interaction: discord.Interaction, rank: int, roblox_username: str):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -238,10 +306,12 @@ async def register_tier(interaction: discord.Interaction, rank: int, roblox_user
 
     await interaction.defer()
 
-    user_display, avatar_url = await get_roblox_user_info(roblox_username)
-    if not user_display:
+    info = await get_roblox_user_info(roblox_username)
+    if not info:
         await interaction.followup.send(f"❌ '{roblox_username}'은(는) 존재하지 않는 로블록스 유저입니다.", ephemeral=True)
         return
+
+    user_display = f"{info['real_name']} (@{info['display_name']})"
 
     new_tiers = {}
     for r, current_name in deathball_tiers.items():
@@ -267,15 +337,15 @@ async def register_tier(interaction: discord.Interaction, rank: int, roblox_user
         description=description,
         color=discord.Color.from_rgb(255, 69, 0)
     )
-    if avatar_url:
-        embed.set_thumbnail(url=avatar_url)
+    if info['avatar_url']:
+        embed.set_thumbnail(url=info['avatar_url'])
     embed.add_field(name="📊 총 등록 인원", value=f"**{len(deathball_tiers)}명** 참가 중", inline=False)
     embed.set_footer(text="Updated Live • Korean Tier System")
 
     await interaction.followup.send(embed=embed)
 
 
-@bot.tree.command(name="티어제거", description="한국 데스볼 지정 순위의 사람을 제거하고 순위표를 바로 띄웁니다.")
+@bot.tree.command(name="티어제거", description="한국 데스볼 지정 순위의 사람을 제거합니다.")
 async def remove_tier(interaction: discord.Interaction, rank: int):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -372,10 +442,12 @@ async def register_jp_tier(interaction: discord.Interaction, rank: int, roblox_u
 
     await interaction.defer()
 
-    user_display, avatar_url = await get_roblox_user_info(roblox_username)
-    if not user_display:
+    info = await get_roblox_user_info(roblox_username)
+    if not info:
         await interaction.followup.send(f"❌ '{roblox_username}'은(는) 존재하지 않는 로블록스 유저입니다.", ephemeral=True)
         return
+
+    user_display = f"{info['real_name']} (@{info['display_name']})"
 
     new_tiers = {}
     for r, current_name in japanese_tiers.items():
@@ -401,8 +473,8 @@ async def register_jp_tier(interaction: discord.Interaction, rank: int, roblox_u
         description=description,
         color=discord.Color.from_rgb(255, 105, 180)
     )
-    if avatar_url:
-        embed.set_thumbnail(url=avatar_url)
+    if info['avatar_url']:
+        embed.set_thumbnail(url=info['avatar_url'])
     embed.add_field(name="📊 총 등록 인원", value=f"**{len(japanese_tiers)}명** 참가 중", inline=False)
     embed.set_footer(text="Updated Live • Japanese User Tier System")
 
