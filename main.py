@@ -79,7 +79,6 @@ async def get_roblox_user_info(username: str):
                     presences = p_data.get("userPresences", [])
                     if presences:
                         p_type = presences[0].get("userPresenceType")
-                        # 0: Offline, 1: Online, 2: InGame, 3: InStudio
                         if p_type == 2:
                             game_name = presences[0].get("lastLocation", "알 수 없는 장소")
                             current_game = f"🎮 플레이 중: {game_name}"
@@ -88,7 +87,7 @@ async def get_roblox_user_info(username: str):
                         else:
                             current_game = "⚪ 오프라인"
 
-        # 5. 이전 닉네임(변경 이력) 가져오기
+        # 5. 이전 닉네임(변경 이력) 가져오기 (최대 10개까지 늘림)
         url_history = f"https://users.roblox.com/v1/users/{user_id}/username-history?limit=10&sortOrder=Desc"
         past_names = []
         async with session.get(url_history) as resp:
@@ -96,7 +95,7 @@ async def get_roblox_user_info(username: str):
                 h_data = await resp.json()
                 items = h_data.get("data", [])
                 if items:
-                    past_names = [item.get("name") for item in items[:3]] # 최근 3개까지만
+                    past_names = [item.get("name") for item in items[:10]] # ✨ 원하는 만큼 조절 가능 (현재 10개)
 
         profile_url = f"https://www.roblox.com/users/{user_id}/profile"
 
@@ -165,7 +164,6 @@ class TokenView(discord.ui.View):
             await interaction.response.send_message("❌ 아직 토큰 환율을 설정하지 않았습니다.\n'토큰 환율 설정' 버튼을 클릭해주세요.", ephemeral=True)
 
 
-# 프로필 바로가기 URL 버튼을 포함하는 뷰 클래스
 class RobloxProfileView(discord.ui.View):
     def __init__(self, profile_url: str):
         super().__init__(timeout=None)
@@ -288,7 +286,6 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     
     embed.set_footer(text="Roblox Advanced Lookup System")
 
-    # 프로필 바로가기 URL 버튼 부착
     view = RobloxProfileView(info['profile_url'])
     await interaction.followup.send(embed=embed, view=view)
 
