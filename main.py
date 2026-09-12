@@ -64,7 +64,7 @@ async def get_roblox_user_info(username: str):
             real_name = user_info["name"]
             display_name = user_info.get("displayName", real_name)
 
-        # 계정 생성일 및 가입 일수 계산
+        # 계정 생성일 및 가입 일수 실시간 계산
         url_detail = f"https://users.roblox.com/v1/users/{user_id}"
         created_at_str = "정보 없음"
         account_age_days = 0
@@ -75,7 +75,8 @@ async def get_roblox_user_info(username: str):
                 if raw_date:
                     dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
                     created_at_str = dt.strftime("%Y년 %m월 %d일")
-                    account_age_days = (datetime.now(dt.tzinfo) - dt).days
+                    now_utc = datetime.now(dt.tzinfo)
+                    account_age_days = (now_utc - dt).days
 
         # 📜 이전 닉네임 히스토리 조회
         url_history = f"https://users.roblox.com/v1/users/{user_id}/username-history"
@@ -401,7 +402,7 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
     embed.add_field(name="📅 계정 생성일", value=f"{info['created_at']} ({info['age_days']:,}일째)", inline=True)
     
-    # 이전 아이디 표시 로직 추가
+    # 이전 아이디 표시
     if info['previous_names']:
         prev_str = ", ".join([f"`{name}`" for name in info['previous_names']])
     else:
@@ -429,7 +430,7 @@ async def deathball_korean_lookup(interaction: discord.Interaction, roblox_usern
     embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
     embed.add_field(name="📅 계정 생성일", value=f"{info['created_at']} ({info['age_days']:,}일째)", inline=True)
     
-    # 이전 아이디 표시 로직 추가
+    # 이전 아이디 표시
     if info['previous_names']:
         prev_str = ", ".join([f"`{name}`" for name in info['previous_names']])
     else:
