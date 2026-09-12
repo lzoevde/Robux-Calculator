@@ -9,9 +9,10 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 데이터 저장용 딕셔너리들
-user_rates = {}        # 로벅스 환율
-user_token_rates = {}  # 블레이드볼 토큰 환율
-deathball_tiers = {}   # 데스볼 티어/순위 데이터
+user_rates = {}          # 로벅스 환율
+user_token_rates = {}    # 블레이드볼 토큰 환율
+deathball_tiers = {}     # 한국 데스볼 티어 데이터
+japanese_tiers = {}      # 일본 유저 티어 데이터
 
 
 @bot.event
@@ -134,7 +135,7 @@ class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 → 원화 계산")
 
 
 # ==========================================
-# 3. 봇 명령어 등록
+# 3. 기본 메뉴 및 한국 데스볼 티어 명령어
 # ==========================================
 @bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 메뉴를 불러옵니다.")
 async def robux_menu(interaction: discord.Interaction):
@@ -166,7 +167,7 @@ async def token_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-@bot.tree.command(name="티어등록", description="순위 번호와 이름을 입력하면 해당 순위부터 아래로 한 칸씩 밀려납니다.")
+@bot.tree.command(name="티어등록", description="한국 데스볼 순위 번호와 이름을 등록합니다.")
 async def register_tier(interaction: discord.Interaction, rank: int, name: str):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
@@ -187,17 +188,17 @@ async def register_tier(interaction: discord.Interaction, rank: int, name: str):
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    await interaction.response.send_message(f"✅ **{rank}등**에 **{name}** 님이 등록되며, 하위 순위가 자동으로 밀려났습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 한국 티어 **{rank}등**에 **{name}** 님이 등록되며, 하위 순위가 자동으로 밀려났습니다!", ephemeral=True)
 
 
-@bot.tree.command(name="티어제거", description="입력한 순위의 사람을 제거하고 아래 순위들을 한 칸씩 앞으로 당깁니다.")
+@bot.tree.command(name="티어제거", description="한국 데스볼 지정 순위의 사람을 제거합니다.")
 async def remove_tier(interaction: discord.Interaction, rank: int):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
     if rank not in deathball_tiers:
-        await interaction.response.send_message(f"❌ **{rank}등**에 등록된 사용자가 없습니다!", ephemeral=True)
+        await interaction.response.send_message(f"❌ 한국 티어 **{rank}등**에 등록된 사용자가 없습니다!", ephemeral=True)
         return
 
     removed_name = deathball_tiers.pop(rank)
@@ -212,31 +213,30 @@ async def remove_tier(interaction: discord.Interaction, rank: int):
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    await interaction.response.send_message(f"🗑️ **{rank}등**({removed_name} 님)이 제거되었고, 하위 순위가 앞으로 당겨졌습니다!", ephemeral=True)
+    await interaction.response.send_message(f"🗑️ 한국 티어 **{rank}등**({removed_name} 님)이 제거되었습니다!", ephemeral=True)
 
 
-@bot.tree.command(name="티어초기화", description="등록된 모든 티어 순위 데이터를 초기화합니다.")
+@bot.tree.command(name="티어초기화", description="한국 데스볼 티어 순위표 데이터를 초기화합니다.")
 async def reset_tier(interaction: discord.Interaction):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
     deathball_tiers.clear()
-    await interaction.response.send_message("⚠️ 모든 티어 순위표 데이터가 초기화되었습니다.", ephemeral=True)
+    await interaction.response.send_message("⚠️ 한국 데스볼 티어 순위표 데이터가 초기화되었습니다.", ephemeral=True)
 
 
-@bot.tree.command(name="티어순위", description="세련된 디자인의 데스볼 티어 순위표를 보여줍니다.")
+@bot.tree.command(name="티어순위", description="한국 데스볼 티어 순위표를 보여줍니다.")
 async def show_leaderboard(interaction: discord.Interaction):
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ 이 명령어는 **#korean-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
     if not deathball_tiers:
-        await interaction.response.send_message("❌ 아직 등록된 순위 정보가 없습니다. `/티어등록` 명령어로 순위를 추가해보세요!", ephemeral=True)
+        await interaction.response.send_message("❌ 아직 등록된 한국 순위 정보가 없습니다.", ephemeral=True)
         return
 
     sorted_ranks = sorted(deathball_tiers.keys())
-
     description = ""
     medals = ["🥇", "🥈", "🥉"]
     
@@ -246,7 +246,6 @@ async def show_leaderboard(interaction: discord.Interaction):
             rank_icon = medals[rank - 1]
         else:
             rank_icon = f"`[{rank:2d}]`"
-            
         description += f"{rank_icon}  **{name}**\n"
 
     embed = discord.Embed(
@@ -255,13 +254,108 @@ async def show_leaderboard(interaction: discord.Interaction):
         color=discord.Color.from_rgb(255, 69, 0)
     )
     embed.add_field(name="📊 총 등록 인원", value=f"**{len(deathball_tiers)}명** 참가 중", inline=False)
-    embed.set_footer(text="Updated Live • Deathball Tier System")
+    embed.set_footer(text="Updated Live • Korean Tier System")
     
     await interaction.response.send_message(embed=embed)
 
 
 # ==========================================
-# 4. 봇 프로필 이미지 & 이름 변경 명령어
+# 4. 일본 유저 티어 명령어 (수정 완료)
+# ==========================================
+@bot.tree.command(name="일본유저티어등록", description="일본 데스볼 유저 순위 번호와 이름을 등록합니다.")
+async def register_jp_tier(interaction: discord.Interaction, rank: int, name: str):
+    if interaction.channel.name != "japanesed-deathball-tier":
+        await interaction.response.send_message("❌ 이 명령어는 **#japanesed-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    if rank < 1:
+        await interaction.response.send_message("❌ 순위는 1 이상의 숫자로 입력해주세요!", ephemeral=True)
+        return
+
+    new_tiers = {}
+    for r, current_name in japanese_tiers.items():
+        if r >= rank:
+            new_tiers[r + 1] = current_name
+        else:
+            new_tiers[r] = current_name
+
+    new_tiers[rank] = name
+    japanese_tiers.clear()
+    japanese_tiers.update(new_tiers)  # 👈 수정 완료 (deathball_tiers -> japanese_tiers)
+
+    await interaction.response.send_message(f"✅ 일본 유저 티어 **{rank}등**에 **{name}** 님이 등록되며, 하위 순위가 자동으로 밀려났습니다!", ephemeral=True)
+
+
+@bot.tree.command(name="일본유저티어제거", description="일본 데스볼 지정 순위의 유저를 제거합니다.")
+async def remove_jp_tier(interaction: discord.Interaction, rank: int):
+    if interaction.channel.name != "japanesed-deathball-tier":
+        await interaction.response.send_message("❌ 이 명령어는 **#japanesed-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    if rank not in japanese_tiers:
+        await interaction.response.send_message(f"❌ 일본 유저 티어 **{rank}등**에 등록된 사용자가 없습니다!", ephemeral=True)
+        return
+
+    removed_name = japanese_tiers.pop(rank)  # 👈 수정 완료
+    
+    new_tiers = {}
+    for r, current_name in japanese_tiers.items():
+        if r > rank:
+            new_tiers[r - 1] = current_name
+        else:
+            new_tiers[r] = current_name
+
+    japanese_tiers.clear()
+    japanese_tiers.update(new_tiers)  # 👈 수정 완료
+
+    await interaction.response.send_message(f"🗑️ 일본 유저 티어 **{rank}등**({removed_name} 님)이 제거되었습니다!", ephemeral=True)
+
+
+@bot.tree.command(name="일본유저티어초기화", description="일본 데스볼 유저 티어 순위표 데이터를 초기화합니다.")
+async def reset_jp_tier(interaction: discord.Interaction):
+    if interaction.channel.name != "japanesed-deathball-tier":
+        await interaction.response.send_message("❌ 이 명령어는 **#japanesed-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    japanese_tiers.clear()
+    await interaction.response.send_message("⚠️ 일본 유저 티어 순위표 데이터가 초기화되었습니다.", ephemeral=True)
+
+
+@bot.tree.command(name="일본유저티어순위", description="일본 데스볼 유저 티어 순위표를 보여줍니다.")
+async def show_jp_leaderboard(interaction: discord.Interaction):
+    if interaction.channel.name != "japanesed-deathball-tier":
+        await interaction.response.send_message("❌ 이 명령어는 **#japanesed-deathball-tier** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    if not japanese_tiers:
+        await interaction.response.send_message("❌ 아직 등록된 일본 유저 순위 정보가 없습니다. `/일본유저티어등록` 명령어로 추가해보세요!", ephemeral=True)
+        return
+
+    sorted_ranks = sorted(japanese_tiers.keys())
+    description = ""
+    medals = ["🥇", "🥈", "🥉"]
+    
+    for rank in sorted_ranks:
+        name = japanese_tiers.get(rank)
+        if rank <= 3:
+            rank_icon = medals[rank - 1]
+        else:
+            rank_icon = f"`[{rank:2d}]`"
+        description += f"{rank_icon}  **{name}**\n"
+
+    embed = discord.Embed(
+        title="🏆 Japanese User Deathball Leaderboard",
+        description=description,
+        color=discord.Color.from_rgb(255, 105, 180)
+    )
+    embed.add_field(name="📊 총 등록 인원", value=f"**{len(japanese_tiers)}명** 참가 중", inline=False)
+    embed.set_footer(text="Updated Live • Japanese User Tier System")
+    
+    await interaction.response.send_message(embed=embed)
+
+
+# ==========================================
+# 5. 봇 프로필 이미지 & 이름 변경 명령어
 # ==========================================
 @bot.tree.command(name="이미지변경", description="이미지 링크(URL)를 입력하여 봇의 프로필 사진을 변경합니다.")
 async def change_bot_avatar(interaction: discord.Interaction, image_url: str):
@@ -280,7 +374,7 @@ async def change_bot_avatar(interaction: discord.Interaction, image_url: str):
         await interaction.followup.send("✨ 성공적으로 봇의 프로필 이미지가 변경되었습니다!", ephemeral=True)
 
     except discord.HTTPException as e:
-        await interaction.followup.send(f"❌ 이미지 변경 실패 (디스코드 제한): 너무 자주 변경했거나 지원하지 않는 형식입니다. ({e})", ephemeral=True)
+        await interaction.followup.send(f"❌ 이미지 변경 실패: 너무 자주 변경했거나 지원하지 않는 형식입니다. ({e})", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ 오류가 발생했습니다: {e}", ephemeral=True)
 
