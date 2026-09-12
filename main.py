@@ -1,4 +1,5 @@
 import os
+import random
 import aiohttp
 import discord
 from discord.ext import commands
@@ -87,7 +88,7 @@ async def get_roblox_user_info(username: str):
                         else:
                             current_game = "⚪ 오프라인"
 
-        # 5. 이전 닉네임(변경 이력) 가져오기 (최대 10개까지 늘림)
+        # 5. 이전 닉네임(변경 이력) 가져오기 (최대 10개)
         url_history = f"https://users.roblox.com/v1/users/{user_id}/username-history?limit=10&sortOrder=Desc"
         past_names = []
         async with session.get(url_history) as resp:
@@ -95,7 +96,7 @@ async def get_roblox_user_info(username: str):
                 h_data = await resp.json()
                 items = h_data.get("data", [])
                 if items:
-                    past_names = [item.get("name") for item in items[:10]] # ✨ 원하는 만큼 조절 가능 (현재 10개)
+                    past_names = [item.get("name") for item in items[:10]]
 
         profile_url = f"https://www.roblox.com/users/{user_id}/profile"
 
@@ -254,6 +255,68 @@ async def token_menu(interaction: discord.Interaction):
     )
     embed.set_footer(text="Blade Ball Token System")
     await interaction.response.send_message(embed=embed, view=TokenView())
+
+
+# --- #bot-ping 채널 전용 핑 명령어 ---
+@bot.tree.command(name="핑", description="봇의 실시간 반응 속도와 상태를 확인합니다.")
+async def bot_ping(interaction: discord.Interaction):
+    if interaction.channel.name != "bot-ping":
+        await interaction.response.send_message("❌ 이 명령어는 **#bot-ping** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    latency = round(bot.latency * 1000)
+    
+    if latency < 100:
+        status_text = "🟢 매우 쾌적함"
+        color = discord.Color.green()
+    elif latency < 250:
+        status_text = "🟡 보통"
+        color = discord.Color.gold()
+    else:
+        status_text = "🔴 지연 발생 중"
+        color = discord.Color.red()
+
+    embed = discord.Embed(
+        title="🏓 Pong! Bot Status",
+        color=color
+    )
+    embed.add_field(name="⚡ 봇 응답 속도 (Latency)", value=f"`{latency}ms`", inline=True)
+    embed.add_field(name="📊 네트워크 상태", value=status_text, inline=True)
+    embed.set_footer(text="Roblox Bot Ping System")
+
+    await interaction.response.send_message(embed=embed)
+
+
+# --- #게임-내전 채널 전용 내전 팀 편성 명령어 ---
+@bot.tree.command(name="내전팀랜덤", description="참가자 닉네임을 콤마(,)로 구분해 입력하면 2개 팀으로 무작위 배정합니다.")
+async def random_teams(interaction: discord.Interaction, players: str):
+    if interaction.channel.name != "게임-내전":
+        await interaction.response.send_message("❌ 이 명령어는 **#게임-내전** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    # 쉼표(,) 기준으로 유저 분리 후 공백 제거
+    player_list = [p.strip() for p in players.split(",") if p.strip()]
+
+    if len(player_list) < 2:
+        await interaction.response.send_message("❌ 최소 2명 이상의 닉네임을 콤마(,)로 구분해서 입력해주세요! (예: `제드,에이즈,디코,로블록스`)", ephemeral=True)
+        return
+
+    # 무작위 섞기
+    random.shuffle(player_list)
+    mid = len(player_list) // 2
+    team_a = player_list[:mid]
+    team_b = player_list[mid:]
+
+    embed = discord.Embed(
+        title="⚔️ 데스볼 내전 랜덤 팀 편성 대진표",
+        description=f"총 참가 인원: **{len(player_list)}명**",
+        color=discord.Color.from_rgb(114, 137, 218)
+    )
+    embed.add_field(name="🔵 [ A 팀 ]", value="\n".join([f"• `{p}`" for p in team_a]) if team_a else "없음", inline=True)
+    embed.add_field(name="🔴 [ B 팀 ]", value="\n".join([f"• `{p}`" for p in team_b]) if team_b else "없음", inline=True)
+    embed.set_footer(text="Deathball Custom Match System")
+
+    await interaction.response.send_message(embed=embed)
 
 
 # --- #roblox-id 채널 전용 종합 조회 기능 ---
