@@ -49,16 +49,22 @@ async def on_ready():
     except Exception as e:
         print(f"❌ 명령어 동기화 실패: {e}")
 
-    # 로블록스 실시간 현황판 메시지 초기화
+    # 봇이 켜질 때 현황판 채널의 이전 봇 메시지 자동 청소
     global status_message
     channel = bot.get_channel(ROBLOX_STATUS_CHANNEL_ID)
     if channel:
-        async for msg in channel.history(limit=5):
-            if msg.author == bot.user:
-                status_message = msg
-                break
-        if not status_message:
-            status_message = await channel.send("🎮 로블록스 서버 실시간 연결 대기 중...")
+        try:
+            deleted_messages = []
+            async for msg in channel.history(limit=10):
+                if msg.author == bot.user:
+                    deleted_messages.append(msg)
+            if deleted_messages:
+                await channel.delete_messages(deleted_messages)
+                print(f"🧹 이전 로블록스 현황판 메시지 {len(deleted_messages)}개를 자동으로 청소했습니다.")
+        except Exception as e:
+            print(f"⚠️ 메시지 청소 중 예외 발생: {e}")
+
+        status_message = await channel.send("🎮 로블록스 서버 실시간 연결 대기 중...")
 
 
 # ==========================================
@@ -74,7 +80,6 @@ def update_status():
         game_data["players"] = data.get("players", [])
         game_data["max_players"] = data.get("max_players", 20)
 
-        # 데이터가 들어올 때 디스코드 현황판 실시간 갱신
         bot.loop.create_task(update_roblox_embed())
         return jsonify({"status": "success"}), 200
     return jsonify({"status": "error"}), 400
@@ -458,7 +463,7 @@ async def deathball_korean_lookup(interaction: discord.Interaction, roblox_usern
     if interaction.channel.name != "death-ball-korean-player":
         await interaction.response.send_message("❌ 이 명령어는 **#death-ball-korean-player** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
-    await interaction.response.defer()
+    await interaction.defer()
     info = await get_roblox_user_info(roblox_username)
     if not info:
         await interaction.followup.send("❌ 존재하지 않는 유저입니다.", ephemeral=True)
@@ -549,7 +554,9 @@ async def show_leaderboard(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed)
 
 
-# --- 봇 제어 명령어 (디스코드 -> 로블록스 연동) ---
+# ==========================================
+# 🛠️ 일반 채팅 명령어 (킥, 공지, 청소)
+# ==========================================
 @bot.command(name="킥")
 @commands.has_permissions(administrator=True)
 async def kick_player(ctx, username: str):
@@ -564,11 +571,21 @@ async def send_notice(ctx, *, message: str):
     await ctx.send(f"📢 [게임 공지 전송]: {message}")
 
 
+@bot.command(name="청소")
+@commands.has_permissions(manage_messages=True)
+async def clear_messages(ctx, amount: int = 10):
+    """채팅창의 메시지를 지정한 개수만큼 깔끔하게 삭제합니다. (기본 10개)"""
+    await ctx.message.delete()  # 명령어 입력한 본인의 메시지 먼저 삭제
+    deleted = await ctx.channel.purge(limit=amount)
+    msg = await ctx.send(f"🧹 최근 메시지 **{len(deleted)}개**를 말끔히 청소했습니다!")
+    await asyncio.sleep(2)      # 2초 뒤 알림 메시지도 자동 삭제
+    await msg.delete()
+
+
 # ==========================================
 # 🚀 봇 및 웹서버 통합 실행
 # ==========================================
 async def main():
-    # Flask 웹서버를 백그라운드 스레드로 실행 (포트 5000)
     threading.Thread(
         target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
     ).start()
