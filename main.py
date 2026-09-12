@@ -64,7 +64,7 @@ async def get_roblox_user_info(username: str):
             real_name = user_info["name"]
             display_name = user_info.get("displayName", real_name)
 
-        # 계정 생성일 및 가입 일수 실시간 계산
+        # 계정 생성일 및 가입 일수 실시간 계산 (매일 날짜가 자동으로 갱신됨)
         url_detail = f"https://users.roblox.com/v1/users/{user_id}"
         created_at_str = "정보 없음"
         account_age_days = 0
@@ -266,6 +266,21 @@ class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 ➔ 원화 계산�
         rate = user_token_rates.get(interaction.user.id, 5000)
         won = (int(self.tokens.value.replace(",", "").strip()) / 1000) * rate
         await interaction.response.send_message(f"🪙 필요 원화 금액: **{won:,.0f}원**", ephemeral=True)
+
+
+# ==========================================
+# 🧹 일반 메시지 명령어 (청소 기능)
+# ==========================================
+@bot.command(name="청소")
+async def clear_messages(ctx, amount: int = 10):
+    try:
+        await ctx.message.delete()
+        deleted = await ctx.channel.purge(limit=amount)
+        msg = await ctx.send(f"🧹 최근 메시지 **{len(deleted)}개**를 깨끗하게 청소했습니다!")
+        await asyncio.sleep(3)
+        await msg.delete()
+    except Exception as e:
+        await ctx.send(f"❌ 메시지를 삭제할 권한이 없거나 오류가 발생했습니다: {e}", delete_after=5)
 
 
 # ==========================================
