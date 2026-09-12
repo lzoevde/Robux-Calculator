@@ -404,6 +404,7 @@ async def deathball_korean_lookup(interaction: discord.Interaction, roblox_usern
         
     embed = discord.Embed(title=f"🇰🇷 한국인 플레이어: {info['real_name']}", color=discord.Color.red())
     embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
+    embed.add_field(name="📅 계정 생성일", value=f"{info['created_at']} ({info['age_days']:,}일째)", inline=True)
     if info['avatar_url']:
         embed.set_thumbnail(url=info['avatar_url'])
     await interaction.followup.send(embed=embed, view=RobloxProfileView(info['profile_url']))
