@@ -41,7 +41,7 @@ async def on_ready():
 
 
 # ==========================================
-# 🛠️ 로블록스 프로필 조회 함수 (이전 아이디 포함)
+# 🛠️ 로블록스 프로필 조회 함수
 # ==========================================
 async def get_roblox_user_info(username: str):
     global http_session
@@ -83,7 +83,6 @@ async def get_roblox_user_info(username: str):
         async with http_session.get(url_history) as resp:
             if resp.status == 200:
                 history_data = await resp.json()
-                # history_data['data'] 안에 과거 이름들이 들어있음
                 for item in history_data.get("data", []):
                     prev_name = item.get("name")
                     if prev_name and prev_name not in previous_names:
@@ -398,14 +397,16 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
         await interaction.followup.send("❌ 존재하지 않는 유저입니다.", ephemeral=True)
         return
     
-    embed = discord.Embed(title=f"🔍 프로필: {info['real_name']}", color=discord.Color.blurple())
+    embed = discord.Embed(title=f"{info['real_name']}", color=discord.Color.blurple())
     embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
     embed.add_field(name="📅 계정 생성일", value=f"{info['created_at']} ({info['age_days']:,}일째)", inline=True)
     
-    # 이전 아이디가 있는 경우에만 필드 추가
+    # 이전 아이디 표시 로직 추가
     if info['previous_names']:
         prev_str = ", ".join([f"`{name}`" for name in info['previous_names']])
-        embed.add_field(name="📜 이전 아이디", value=prev_str, inline=False)
+    else:
+        prev_str = "`없음`"
+    embed.add_field(name="📜 이전 아이디", value=prev_str, inline=False)
 
     if info['avatar_url']:
         embed.set_thumbnail(url=info['avatar_url'])
@@ -424,14 +425,16 @@ async def deathball_korean_lookup(interaction: discord.Interaction, roblox_usern
         await interaction.followup.send("❌ 존재하지 않는 유저입니다.", ephemeral=True)
         return
         
-    embed = discord.Embed(title=f"🇰🇷 한국인 플레이어: {info['real_name']}", color=discord.Color.red())
+    embed = discord.Embed(title=f"{info['real_name']}", color=discord.Color.red())
     embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
     embed.add_field(name="📅 계정 생성일", value=f"{info['created_at']} ({info['age_days']:,}일째)", inline=True)
     
-    # 이전 아이디가 있는 경우에만 필드 추가
+    # 이전 아이디 표시 로직 추가
     if info['previous_names']:
         prev_str = ", ".join([f"`{name}`" for name in info['previous_names']])
-        embed.add_field(name="📜 이전 아이디", value=prev_str, inline=False)
+    else:
+        prev_str = "`없음`"
+    embed.add_field(name="📜 이전 아이디", value=prev_str, inline=False)
 
     if info['avatar_url']:
         embed.set_thumbnail(url=info['avatar_url'])
