@@ -25,7 +25,7 @@ command_queue = []       # 로블록스 전송용 명령어 대기열
 # 🗺️ 데스볼 맵 리스트
 deathball_maps = ["클래식 아레나", "네온 시티", "볼케이노"]
 
-# 전역 aiohttp 세션 (세션 충돌 및 크래시 방지)
+# 전역 aiohttp 세션
 http_session: aiohttp.ClientSession = None
 
 
@@ -59,7 +59,7 @@ def get_command():
 
 
 # ==========================================
-# 🛠️ 로블록스 프로필 조회 함수 (안정성 강화)
+# 🛠️ 로블록스 프로필 조회 함수 (속도 최적화)
 # ==========================================
 async def get_roblox_user_info(username: str):
     global http_session
@@ -135,7 +135,7 @@ async def get_latest_username_by_id(user_id: int):
 
 
 # ==========================================
-# 🎨 UI 뷰(버튼) 및 모달 클래스 모음
+# 🎨 UI 뷰 클래스 모음
 # ==========================================
 class RobuxView(discord.ui.View):
     def __init__(self):
@@ -219,7 +219,7 @@ class MatchupRegisterView(discord.ui.View):
         await interaction.response.edit_message(embed=embed)
 
 
-# --- 모달(팝업 입력창) 모음 ---
+# --- 모달 클래스 모음 ---
 class RateModal(discord.ui.Modal, title="💎 로벅스 환율 설정"):
     rate = discord.ui.TextInput(label="1만원당 로벅스 (숫자만 입력)", placeholder="예: 1300")
     async def on_submit(self, interaction: discord.Interaction):
@@ -272,7 +272,7 @@ class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 ➔ 원화 계산�
 
 
 # ==========================================
-# 🎯 슬래시 명령어 (채널별 제한 적용)
+# 🎯 슬래시 명령어 (응답 지연 처리 적용)
 # ==========================================
 
 @bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 패널을 불러옵니다.")
@@ -404,7 +404,10 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     if interaction.channel.name != "roblox-id":
         await interaction.response.send_message("❌ 이 명령어는 **#roblox-id** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
+    
+    # ⏱️ 디스코드 3초 타임아웃 방지용 대기 선언
     await interaction.response.defer()
+    
     info = await get_roblox_user_info(roblox_username)
     if not info:
         await interaction.followup.send("❌ 존재하지 않는 유저입니다.", ephemeral=True)
@@ -419,14 +422,19 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
 
 @bot.tree.command(name="한국인플레이어조회", description="데스볼 한국인 플레이어를 조회합니다.")
 async def deathball_korean_lookup(interaction: discord.Interaction, roblox_username: str):
+    # 채널 이름 검사 및 디스코드 타임아웃 방지(`defer`) 추가
     if interaction.channel.name != "death-ball-korean-player":
         await interaction.response.send_message("❌ 이 명령어는 **#death-ball-korean-player** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
-    await interaction.defer()
+    
+    # ⏱️ 핵심 수정: API 요청 전에 먼저 응답 지연을 선언하여 "애플리케이션이 응답하지 않았어요" 에러 원천 차단
+    await interaction.response.defer()
+    
     info = await get_roblox_user_info(roblox_username)
     if not info:
         await interaction.followup.send("❌ 존재하지 않는 유저입니다.", ephemeral=True)
         return
+        
     embed = discord.Embed(title=f"🇰🇷 한국인 플레이어: {info['real_name']}", color=discord.Color.red())
     embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
     if info['avatar_url']:
@@ -518,7 +526,7 @@ async def show_leaderboard(interaction: discord.Interaction):
 
 
 # ==========================================
-# 🛠️ 일반 프리픽스 명령어 (킥, 공지, 청소)
+# 🛠️ 일반 프리픽스 명령어
 # ==========================================
 @bot.command(name="킥")
 @commands.has_permissions(administrator=True)
@@ -545,7 +553,7 @@ async def clear_messages(ctx, amount: int = 10):
 
 
 # ==========================================
-# 🚀 봇 및 웹서버 통합 실행 (종료 시 세션 정리 추가)
+# 🚀 봇 및 웹서버 통합 실행
 # ==========================================
 async def main():
     global http_session
