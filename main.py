@@ -12,8 +12,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # 데이터 저장용 딕셔너리들
 user_rates = {}          # 로벅스 환율
 user_token_rates = {}    # 블레이드볼 토큰 환율
-deathball_tiers = {}     # 한국 데스볼 티어 데이터
-japanese_tiers = {}      # 일본 유저 티어 데이터
+
+# 💡 닉네임 대신 고유 ID(user_id)와 상세 정보를 저장하도록 구조 변경
+deathball_tiers = {}     # {순위: {"user_id": 정수, "username": "...", "display_name": "..."}}
+japanese_tiers = {}      # {순위: {"user_id": 정수, "username": "...", "display_name": "..."}}
 
 # 내전 참가자 명단 저장용 세트 (중복 방지)
 matchup_participants = set()
@@ -30,7 +32,7 @@ async def on_ready():
 
 
 # ==========================================
-# 🛠️ 로블록스 통합 API: 닉네임 검색, 아바타, 생성일, 접속 게임, 닉네임 이력
+# 🛠️ 로블록스 통합 API (User ID도 함께 반환하도록 개선)
 # ==========================================
 async def get_roblox_user_info(username: str):
     async with aiohttp.ClientSession() as session:
@@ -99,6 +101,7 @@ async def get_roblox_user_info(username: str):
         profile_url = f"https://www.roblox.com/users/{user_id}/profile"
 
         return {
+            "user_id": user_id,
             "real_name": real_name,
             "display_name": display_name,
             "profile_url": profile_url,
@@ -108,6 +111,17 @@ async def get_roblox_user_info(username: str):
             "current_game": current_game,
             "past_names": past_names
         }
+
+
+# 💡 ID로 최신 닉네임을 다시 가져오는 함수 (실시간 동기화용)
+async def get_latest_username_by_id(user_id: int):
+    async with aiohttp.ClientSession() as session:
+        url_detail = f"https://users.roblox.com/v1/users/{user_id}"
+        async with session.get(url_detail) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                return data.get("name"), data.get("displayName")
+    return None, None
 
 
 # ==========================================
@@ -257,7 +271,6 @@ class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 → 원화 계산")
 # 2. 채널별 명령어 모음
 # ==========================================
 
-# --- #robux-계산기 ---
 @bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 메뉴를 불러옵니다.")
 async def robux_menu(interaction: discord.Interaction):
     if interaction.channel.name != "robux-계산기":
@@ -273,7 +286,6 @@ async def robux_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=RobuxView())
 
 
-# --- #블레이드볼-토큰계산 ---
 @bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 시세 계산기 메뉴를 불러옵니다.")
 async def token_menu(interaction: discord.Interaction):
     if interaction.channel.name != "블레이드볼-토큰계산":
@@ -289,7 +301,6 @@ async def token_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-# --- #bot-ping ---
 @bot.tree.command(name="핑", description="봇의 실시간 반응 속도와 상태를 확인합니다.")
 async def bot_ping(interaction: discord.Interaction):
     if interaction.channel.name != "bot-ping":
@@ -319,7 +330,6 @@ async def bot_ping(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# --- #게임-내전 ---
 @bot.tree.command(name="내전팀랜덤", description="참가자 닉네임을 콤마(,)로 구분해 입력하면 2개 팀으로 무작위 배정합니다.")
 async def random_teams(interaction: discord.Interaction, players: str):
     if interaction.channel.name != "게임-내전":
@@ -349,7 +359,6 @@ async def random_teams(interaction: discord.Interaction, players: str):
     await interaction.response.send_message(embed=embed)
 
 
-# --- #데스볼-토너먼트-표 채널 전용 ---
 @bot.tree.command(name="토너먼트생성", description="참가자 닉네임을 콤마(,)로 입력해 1대1 토너먼트 매치 대진표를 만듭니다.")
 async def tournament_matchup(interaction: discord.Interaction, players: str):
     if interaction.channel.name != "데스볼-토너먼트-표":
@@ -385,7 +394,6 @@ async def tournament_matchup(interaction: discord.Interaction, players: str):
     await interaction.response.send_message(embed=embed)
 
 
-# --- #데스볼-맵-추천 채널 전용 ---
 @bot.tree.command(name="맵추천", description="데스볼 플레이 맵을 무작위로 추첨해 줍니다.")
 async def recommend_map(interaction: discord.Interaction):
     if interaction.channel.name != "데스볼-맵-추천":
@@ -414,7 +422,6 @@ async def recommend_map(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# --- #데스볼-내전-등록 채널 전용 ---
 @bot.tree.command(name="내전등록메뉴", description="버튼으로 참가자를 모집하는 내전 등록 패널을 생성합니다.")
 async def matchup_menu(interaction: discord.Interaction):
     if interaction.channel.name != "데스볼-내전-등록":
@@ -435,7 +442,6 @@ async def matchup_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=MatchupRegisterView())
 
 
-# --- #roblox-id ---
 @bot.tree.command(name="로블록스조회", description="로블록스 유저의 프로필, 생성일, 접속 상태, 닉네임 이력을 조회합니다.")
 async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     if interaction.channel.name != "roblox-id":
@@ -469,7 +475,6 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     await interaction.followup.send(embed=embed, view=view)
 
 
-# --- #death-ball-korean-player 채널 전용 ---
 @bot.tree.command(name="한국인플레이어조회", description="데스볼 한국인 플레이어의 로블록스 프로필, 접속 상태, 닉네임 이력을 조회합니다.")
 async def deathball_korean_lookup(interaction: discord.Interaction, roblox_username: str):
     if interaction.channel.name != "death-ball-korean-player":
@@ -503,7 +508,48 @@ async def deathball_korean_lookup(interaction: discord.Interaction, roblox_usern
     await interaction.followup.send(embed=embed, view=view)
 
 
-# --- #korean-deathball-tier ---
+# ==========================================
+# 💡 [핵심] 닉네임 변경 자동 반영 티어 시스템 (한국 / 일본)
+# ==========================================
+
+async def generate_tier_embed(tiers_dict, title, color_val, thumbnail_url=None):
+    if not tiers_dict:
+        return None
+    
+    sorted_ranks = sorted(tiers_dict.keys())
+    description = ""
+    medals = ["🥇", "🥈", "🥉"]
+
+    for rank in sorted_ranks:
+        data = tiers_dict[rank]
+        user_id = data["user_id"]
+        
+        # 💡 순위를 보여줄 때마다 로블록스 서버에서 최신 닉네임을 실시간 조회합니다!
+        latest_name, latest_display = await get_latest_username_by_id(user_id)
+        if latest_name:
+            display_str = f"{latest_name} (@{latest_display})"
+        else:
+            display_str = f"{data['username']} (정보 갱신 실패)"
+
+        if rank <= 3:
+            rank_icon = medals[rank - 1]
+        else:
+            rank_icon = f"`[{rank:2d}]`"
+        description += f"{rank_icon}  **{display_str}**\n"
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color_val
+    )
+    if thumbnail_url:
+        embed.set_thumbnail(url=thumbnail_url)
+    embed.add_field(name="📊 총 등록 인원", value=f"**{len(tiers_dict)}명** 참가 중 (실시간 닉네임 동기화 🟢)", inline=False)
+    embed.set_footer(text="Updated Live • Auto-Sync Tier System")
+    return embed
+
+
+# --- 한국 데스볼 티어 ---
 @bot.tree.command(name="티어등록", description="로블록스 닉네임을 입력하여 한국 티어에 등록합니다.")
 async def register_tier(interaction: discord.Interaction, rank: int, roblox_username: str):
     if interaction.channel.name != "korean-deathball-tier":
@@ -521,37 +567,28 @@ async def register_tier(interaction: discord.Interaction, rank: int, roblox_user
         await interaction.followup.send(f"❌ '{roblox_username}'은(는) 존재하지 않는 로블록스 유저입니다.", ephemeral=True)
         return
 
-    user_display = f"{info['real_name']} (@{info['display_name']})"
-
     new_tiers = {}
-    for r, current_name in deathball_tiers.items():
+    for r, current_data in deathball_tiers.items():
         if r >= rank:
-            new_tiers[r + 1] = current_name
+            new_tiers[r + 1] = current_data
         else:
-            new_tiers[r] = current_name
+            new_tiers[r] = current_data
 
-    new_tiers[rank] = user_display
+    # 💡 닉네임 문자열 대신 고유 user_id를 함께 저장합니다.
+    new_tiers[rank] = {
+        "user_id": info["user_id"],
+        "username": info["real_name"],
+        "display_name": info["display_name"]
+    }
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    sorted_ranks = sorted(deathball_tiers.keys())
-    description = f"✅ **{rank}등**에 **{user_display}** 님이 등록되었습니다!\n\n"
-    medals = ["🥇", "🥈", "🥉"]
-    for r in sorted_ranks:
-        n = deathball_tiers.get(r)
-        rank_icon = medals[r - 1] if r <= 3 else f"`[{r:2d}]`"
-        description += f"{rank_icon}  **{n}**\n"
-
-    embed = discord.Embed(
-        title="🏆 Korean Deathball Leaderboard",
-        description=description,
-        color=discord.Color.from_rgb(255, 69, 0)
+    embed = await generate_tier_embed(
+        deathball_tiers, 
+        "🏆 Korean Deathball Leaderboard", 
+        discord.Color.from_rgb(255, 69, 0), 
+        info['avatar_url']
     )
-    if info['avatar_url']:
-        embed.set_thumbnail(url=info['avatar_url'])
-    embed.add_field(name="📊 총 등록 인원", value=f"**{len(deathball_tiers)}명** 참가 중", inline=False)
-    embed.set_footer(text="Updated Live • Korean Tier System")
-
     await interaction.followup.send(embed=embed)
 
 
@@ -565,35 +602,28 @@ async def remove_tier(interaction: discord.Interaction, rank: int):
         await interaction.response.send_message(f"❌ 한국 티어 **{rank}등**에 등록된 사용자가 없습니다!", ephemeral=True)
         return
 
-    removed_name = deathball_tiers.pop(rank)
+    await interaction.defer()
+    deathball_tiers.pop(rank)
     
     new_tiers = {}
-    for r, current_name in deathball_tiers.items():
+    for r, current_data in deathball_tiers.items():
         if r > rank:
-            new_tiers[r - 1] = current_name
+            new_tiers[r - 1] = current_data
         else:
-            new_tiers[r] = current_name
+            new_tiers[r] = current_data
 
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    sorted_ranks = sorted(deathball_tiers.keys())
-    description = f"🗑️ **{rank}등**({removed_name})이 제거되었습니다!\n\n"
-    medals = ["🥇", "🥈", "🥉"]
-    for r in sorted_ranks:
-        n = deathball_tiers.get(r)
-        rank_icon = medals[r - 1] if r <= 3 else f"`[{r:2d}]`"
-        description += f"{rank_icon}  **{n}**\n"
-
-    embed = discord.Embed(
-        title="🏆 Korean Deathball Leaderboard",
-        description=description,
-        color=discord.Color.from_rgb(255, 69, 0)
+    embed = await generate_tier_embed(
+        deathball_tiers, 
+        "🏆 Korean Deathball Leaderboard", 
+        discord.Color.from_rgb(255, 69, 0)
     )
-    embed.add_field(name="📊 총 등록 인원", value=f"**{len(deathball_tiers)}명** 참가 중", inline=False)
-    embed.set_footer(text="Updated Live • Korean Tier System")
-
-    await interaction.response.send_message(embed=embed)
+    if not embed:
+        await interaction.followup.send("⚠️ 순위표가 비어있습니다.", ephemeral=True)
+    else:
+        await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(name="티어초기화", description="한국 데스볼 티어 순위표 데이터를 초기화합니다.")
@@ -616,30 +646,16 @@ async def show_leaderboard(interaction: discord.Interaction):
         await interaction.response.send_message("❌ 아직 등록된 한국 순위 정보가 없습니다.", ephemeral=True)
         return
 
-    sorted_ranks = sorted(deathball_tiers.keys())
-    description = ""
-    medals = ["🥇", "🥈", "🥉"]
-    
-    for rank in sorted_ranks:
-        name = deathball_tiers.get(rank)
-        if rank <= 3:
-            rank_icon = medals[rank - 1]
-        else:
-            rank_icon = f"`[{rank:2d}]`"
-        description += f"{rank_icon}  **{name}**\n"
-
-    embed = discord.Embed(
-        title="🏆 Korean Deathball Leaderboard",
-        description=description,
-        color=discord.Color.from_rgb(255, 69, 0)
+    await interaction.defer()
+    embed = await generate_tier_embed(
+        deathball_tiers, 
+        "🏆 Korean Deathball Leaderboard", 
+        discord.Color.from_rgb(255, 69, 0)
     )
-    embed.add_field(name="📊 총 등록 인원", value=f"**{len(deathball_tiers)}명** 참가 중", inline=False)
-    embed.set_footer(text="Updated Live • Korean Tier System")
-    
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
-# --- #japanese-deathball-tier ---
+# --- 일본 유저 티어 ---
 @bot.tree.command(name="일본유저티어등록", description="로블록스 닉네임을 입력하여 일본 유저 티어에 등록합니다.")
 async def register_jp_tier(interaction: discord.Interaction, rank: int, roblox_username: str):
     if interaction.channel.name != "japanese-deathball-tier":
@@ -657,37 +673,27 @@ async def register_jp_tier(interaction: discord.Interaction, rank: int, roblox_u
         await interaction.followup.send(f"❌ '{roblox_username}'은(는) 존재하지 않는 로블록스 유저입니다.", ephemeral=True)
         return
 
-    user_display = f"{info['real_name']} (@{info['display_name']})"
-
     new_tiers = {}
-    for r, current_name in japanese_tiers.items():
+    for r, current_data in japanese_tiers.items():
         if r >= rank:
-            new_tiers[r + 1] = current_name
+            new_tiers[r + 1] = current_data
         else:
-            new_tiers[r] = current_name
+            new_tiers[r] = current_data
 
-    new_tiers[rank] = user_display
+    new_tiers[rank] = {
+        "user_id": info["user_id"],
+        "username": info["real_name"],
+        "display_name": info["display_name"]
+    }
     japanese_tiers.clear()
     japanese_tiers.update(new_tiers)
 
-    sorted_ranks = sorted(japanese_tiers.keys())
-    description = f"✅ 일본 유저 **{rank}등**에 **{user_display}** 님이 등록되었습니다!\n\n"
-    medals = ["🥇", "🥈", "🥉"]
-    for r in sorted_ranks:
-        n = japanese_tiers.get(r)
-        rank_icon = medals[r - 1] if r <= 3 else f"`[{r:2d}]`"
-        description += f"{rank_icon}  **{n}**\n"
-
-    embed = discord.Embed(
-        title="🏆 Japanese User Deathball Leaderboard",
-        description=description,
-        color=discord.Color.from_rgb(255, 105, 180)
+    embed = await generate_tier_embed(
+        japanese_tiers, 
+        "🏆 Japanese User Deathball Leaderboard", 
+        discord.Color.from_rgb(255, 105, 180), 
+        info['avatar_url']
     )
-    if info['avatar_url']:
-        embed.set_thumbnail(url=info['avatar_url'])
-    embed.add_field(name="📊 총 등록 인원", value=f"**{len(japanese_tiers)}명** 참가 중", inline=False)
-    embed.set_footer(text="Updated Live • Japanese User Tier System")
-
     await interaction.followup.send(embed=embed)
 
 
@@ -701,35 +707,28 @@ async def remove_jp_tier(interaction: discord.Interaction, rank: int):
         await interaction.response.send_message(f"❌ 일본 유저 티어 **{rank}등**에 등록된 사용자가 없습니다!", ephemeral=True)
         return
 
-    removed_name = japanese_tiers.pop(rank)
+    await interaction.defer()
+    japanese_tiers.pop(rank)
     
     new_tiers = {}
-    for r, current_name in japanese_tiers.items():
+    for r, current_data in japanese_tiers.items():
         if r > rank:
-            new_tiers[r - 1] = current_name
+            new_tiers[r - 1] = current_data
         else:
-            new_tiers[r] = current_name
+            new_tiers[r] = current_data
 
     japanese_tiers.clear()
     japanese_tiers.update(new_tiers)
 
-    sorted_ranks = sorted(japanese_tiers.keys())
-    description = f"🗑️ 일본 유저 **{rank}등**({removed_name})이 제거되었습니다!\n\n"
-    medals = ["🥇", "🥈", "🥉"]
-    for r in sorted_ranks:
-        n = japanese_tiers.get(r)
-        rank_icon = medals[r - 1] if r <= 3 else f"`[{r:2d}]`"
-        description += f"{rank_icon}  **{n}**\n"
-
-    embed = discord.Embed(
-        title="🏆 Japanese User Deathball Leaderboard",
-        description=description,
-        color=discord.Color.from_rgb(255, 105, 180)
+    embed = await generate_tier_embed(
+        japanese_tiers, 
+        "🏆 Japanese User Deathball Leaderboard", 
+        discord.Color.from_rgb(255, 105, 180)
     )
-    embed.add_field(name="📊 총 등록 인원", value=f"**{len(japanese_tiers)}명** 참가 중", inline=False)
-    embed.set_footer(text="Updated Live • Japanese User Tier System")
-
-    await interaction.followup.send(embed=embed)
+    if not embed:
+        await interaction.followup.send("⚠️ 순위표가 비어있습니다.", ephemeral=True)
+    else:
+        await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(name="일본유저티어초기화", description="일본 데스볼 유저 티어 순위표 데이터를 초기화합니다.")
@@ -752,27 +751,13 @@ async def show_jp_leaderboard(interaction: discord.Interaction):
         await interaction.response.send_message("❌ 아직 등록된 일본 유저 순위 정보가 없습니다.", ephemeral=True)
         return
 
-    sorted_ranks = sorted(japanese_tiers.keys())
-    description = ""
-    medals = ["🥇", "🥈", "🥉"]
-    
-    for rank in sorted_ranks:
-        name = japanese_tiers.get(rank)
-        if rank <= 3:
-            rank_icon = medals[rank - 1]
-        else:
-            rank_icon = f"`[{rank:2d}]`"
-        description += f"{rank_icon}  **{name}**\n"
-
-    embed = discord.Embed(
-        title="🏆 Japanese User Deathball Leaderboard",
-        description=description,
-        color=discord.Color.from_rgb(255, 105, 180)
+    await interaction.defer()
+    embed = await generate_tier_embed(
+        japanese_tiers, 
+        "🏆 Japanese User Deathball Leaderboard", 
+        discord.Color.from_rgb(255, 105, 180)
     )
-    embed.add_field(name="📊 총 등록 인원", value=f"**{len(japanese_tiers)}명** 참가 중", inline=False)
-    embed.set_footer(text="Updated Live • Japanese User Tier System")
-    
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
 # ==========================================
