@@ -15,6 +15,9 @@ user_token_rates = {}    # 블레이드볼 토큰 환율
 deathball_tiers = {}     # 한국 데스볼 티어 데이터
 japanese_tiers = {}      # 일본 유저 티어 데이터
 
+# 내전 참가자 명단 저장용 세트 (중복 방지)
+matchup_participants = set()
+
 
 @bot.event
 async def on_ready():
@@ -31,7 +34,6 @@ async def on_ready():
 # ==========================================
 async def get_roblox_user_info(username: str):
     async with aiohttp.ClientSession() as session:
-        # 1. 닉네임으로 User ID 검색
         url_search = "https://users.roblox.com/v1/usernames/users"
         payload = {"usernames": [username], "excludeBannedUsers": True}
         
@@ -47,7 +49,6 @@ async def get_roblox_user_info(username: str):
             real_name = user_info["name"]
             display_name = user_info.get("displayName", real_name)
 
-        # 2. 유저 상세 정보 (계정 생성일 등) 가져오기
         url_detail = f"https://users.roblox.com/v1/users/{user_id}"
         created_at_str = "정보 없음"
         account_age_days = 0
@@ -60,7 +61,6 @@ async def get_roblox_user_info(username: str):
                     created_at_str = dt.strftime("%Y년 %m월 %d일")
                     account_age_days = (datetime.now(dt.tzinfo) - dt).days
 
-        # 3. 아바타 썸네일 가져오기
         url_avatar = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
         avatar_url = None
         async with session.get(url_avatar) as resp:
@@ -69,14 +69,13 @@ async def get_roblox_user_info(username: str):
                 if avatar_data.get("data"):
                     avatar_url = avatar_data["data"][0]["imageUrl"]
 
-        # 4. 현재 접속 중인 게임(플레이 상태) 가져오기
         url_presence = "https://presence.roblox.com/v1/presence/users"
         presence_payload = {"userIds": [user_id]}
         current_game = "offline (접속 중 아님)"
         async with session.post(url_presence, json=presence_payload) as resp:
             if resp.status == 200:
                 p_data = await resp.json()
-                if p_data.get("presenceNotifications") or p_data.get("userPresences"):
+                if p_data.get("userPresences"):
                     presences = p_data.get("userPresences", [])
                     if presences:
                         p_type = presences[0].get("userPresenceType")
@@ -88,7 +87,6 @@ async def get_roblox_user_info(username: str):
                         else:
                             current_game = "⚪ 오프라인"
 
-        # 5. 이전 닉네임(변경 이력) 가져오기 (최대 10개)
         url_history = f"https://users.roblox.com/v1/users/{user_id}/username-history?limit=10&sortOrder=Desc"
         past_names = []
         async with session.get(url_history) as resp:
@@ -171,6 +169,37 @@ class RobloxProfileView(discord.ui.View):
         self.add_item(discord.ui.Button(label="🔗 로블록스 공식 프로필 바로가기", style=discord.ButtonStyle.link, url=profile_url))
 
 
+# --- 내전 참가 등록 버튼 뷰 ---
+class MatchupRegisterView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="✅ 내전 참가하기", style=discord.ButtonStyle.success, custom_id="matchup_join_btn")
+    async def join_matchup(self, interaction: discord.Interaction, button: discord.ui.Button):
+        matchup_participants.add(interaction.user.display_name)
+        
+        participants_list = "\n".join([f"• `{name}`" for name in matchup_participants]) if matchup_participants else "아직 참가자가 없습니다."
+        
+        embed = interaction.message.embeds[0]
+        embed.clear_fields()
+        embed.add_field(name=f"👥 참가 명단 ({len(matchup_participants)}명)", value=participants_list, inline=False)
+        
+        await interaction.response.edit_message(embed=embed)
+
+    @discord.ui.button(label="❌ 참가 취소하기", style=discord.ButtonStyle.danger, custom_id="matchup_cancel_btn")
+    async def cancel_matchup(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.display_name in matchup_participants:
+            matchup_participants.remove(interaction.user.display_name)
+        
+        participants_list = "\n".join([f"• `{name}`" for name in matchup_participants]) if matchup_participants else "아직 참가자가 없습니다."
+        
+        embed = interaction.message.embeds[0]
+        embed.clear_fields()
+        embed.add_field(name=f"👥 참가 명단 ({len(matchup_participants)}명)", value=participants_list, inline=False)
+        
+        await interaction.response.edit_message(embed=embed)
+
+
 class RateModal(discord.ui.Modal, title="💎 로벅스 환율 설정"):
     rate = discord.ui.TextInput(label="1만원당 로벅스", placeholder="예: 1300")
     async def on_submit(self, interaction: discord.Interaction):
@@ -225,8 +254,10 @@ class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 → 원화 계산")
 
 
 # ==========================================
-# 2. 채널 명령어 모음
+# 2. 채널별 명령어 모음
 # ==========================================
+
+# --- #robux-계산기 ---
 @bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 메뉴를 불러옵니다.")
 async def robux_menu(interaction: discord.Interaction):
     if interaction.channel.name != "robux-계산기":
@@ -242,6 +273,7 @@ async def robux_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=RobuxView())
 
 
+# --- #블레이드볼-토큰계산 ---
 @bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 시세 계산기 메뉴를 불러옵니다.")
 async def token_menu(interaction: discord.Interaction):
     if interaction.channel.name != "블레이드볼-토큰계산":
@@ -257,7 +289,7 @@ async def token_menu(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-# --- #bot-ping 채널 전용 핑 명령어 ---
+# --- #bot-ping ---
 @bot.tree.command(name="핑", description="봇의 실시간 반응 속도와 상태를 확인합니다.")
 async def bot_ping(interaction: discord.Interaction):
     if interaction.channel.name != "bot-ping":
@@ -287,21 +319,19 @@ async def bot_ping(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# --- #게임-내전 채널 전용 내전 팀 편성 명령어 ---
+# --- #게임-내전 ---
 @bot.tree.command(name="내전팀랜덤", description="참가자 닉네임을 콤마(,)로 구분해 입력하면 2개 팀으로 무작위 배정합니다.")
 async def random_teams(interaction: discord.Interaction, players: str):
     if interaction.channel.name != "게임-내전":
         await interaction.response.send_message("❌ 이 명령어는 **#게임-내전** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
 
-    # 쉼표(,) 기준으로 유저 분리 후 공백 제거
     player_list = [p.strip() for p in players.split(",") if p.strip()]
 
     if len(player_list) < 2:
-        await interaction.response.send_message("❌ 최소 2명 이상의 닉네임을 콤마(,)로 구분해서 입력해주세요! (예: `제드,에이즈,디코,로블록스`)", ephemeral=True)
+        await interaction.response.send_message("❌ 최소 2명 이상의 닉네임을 콤마(,)로 구분해서 입력해주세요!", ephemeral=True)
         return
 
-    # 무작위 섞기
     random.shuffle(player_list)
     mid = len(player_list) // 2
     team_a = player_list[:mid]
@@ -319,7 +349,94 @@ async def random_teams(interaction: discord.Interaction, players: str):
     await interaction.response.send_message(embed=embed)
 
 
-# --- #roblox-id 채널 전용 종합 조회 기능 ---
+# --- #데스볼-토너먼트-표 채널 전용 ---
+@bot.tree.command(name="토너먼트생성", description="참가자 닉네임을 콤마(,)로 입력해 1대1 토너먼트 매치 대진표를 만듭니다.")
+async def tournament_matchup(interaction: discord.Interaction, players: str):
+    if interaction.channel.name != "데스볼-토너먼트-표":
+        await interaction.response.send_message("❌ 이 명령어는 **#데스볼-토너먼트-표** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    player_list = [p.strip() for p in players.split(",") if p.strip()]
+
+    if len(player_list) < 2:
+        await interaction.response.send_message("❌ 토너먼트를 위해 최소 2명 이상의 닉네임을 콤마(,)로 입력해주세요!", ephemeral=True)
+        return
+
+    random.shuffle(player_list)
+    
+    embed = discord.Embed(
+        title="🏆 데스볼 토너먼트 대진표",
+        description=f"참가 인원: **{len(player_list)}명** | 1:1 매치 무작위 매칭 완료!",
+        color=discord.Color.from_rgb(255, 215, 0)
+    )
+
+    match_count = 1
+    for i in range(0, len(player_list) - 1, 2):
+        p1 = player_list[i]
+        p2 = player_list[i+1]
+        embed.add_field(name=f"⚔️ Match {match_count}", value=f"`{p1}`  VS  `{p2}`", inline=False)
+        match_count += 1
+
+    # 홀수 남는 사람 처리
+    if len(player_list) % 2 != 0:
+        odd_player = player_list[-1]
+        embed.add_field(name="📌 부전승 / 대기자", value=f"`{odd_player}` (다음 라운드 직행)", inline=False)
+
+    embed.set_footer(text="Deathball Tournament System")
+    await interaction.response.send_message(embed=embed)
+
+
+# --- #데스볼-맵-추천 채널 전용 ---
+@bot.tree.command(name="맵추천", description="데스볼 플레이 맵을 무작위로 추첨해 줍니다.")
+async def recommend_map(interaction: discord.Interaction):
+    if interaction.channel.name != "데스볼-맵-추천":
+        await interaction.response.send_message("❌ 이 명령어는 **#데스볼-맵-추천** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    maps = [
+        "🏟️ 클래식 아레나 (Classic Arena)",
+        "⚡ 네온 시티 (Neon City)",
+        "🔥 볼케이노 스테이지 (Volcano Stage)",
+        "❄️ 프로즌 글레이셔 (Frozen Glacier)",
+        "🌌 스페이스 스테이션 (Space Station)",
+        "🏰 미드나이트 캐슬 (Midnight Castle)",
+        "🌀 사이버 림 (Cyber Realm)"
+    ]
+    
+    chosen_map = random.choice(maps)
+
+    embed = discord.Embed(
+        title="🗺️ 데스볼 랜덤 맵 추첨 결과",
+        description=f"이번 판에 플레이할 추천 맵은...\n\n# **{chosen_map}**",
+        color=discord.Color.from_rgb(0, 255, 127)
+    )
+    embed.set_footer(text="Deathball Map Roulette System")
+    
+    await interaction.response.send_message(embed=embed)
+
+
+# --- #데스볼-내전-등록 채널 전용 ---
+@bot.tree.command(name="내전등록메뉴", description="버튼으로 참가자를 모집하는 내전 등록 패널을 생성합니다.")
+async def matchup_menu(interaction: discord.Interaction):
+    if interaction.channel.name != "데스볼-내전-등록":
+        await interaction.response.send_message("❌ 이 명령어는 **#데스볼-내전-등록** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    global matchup_participants
+    matchup_participants.clear()  # 메뉴 생성 시 초기화
+
+    embed = discord.Embed(
+        title="📝 데스볼 내전 참가자 모집",
+        description="아래의 **[✅ 내전 참가하기]** 버튼을 눌러 내전에 참여해 주세요!\n(취소하고 싶다면 **[❌ 참가 취소하기]**를 누르세요)",
+        color=discord.Color.from_rgb(255, 140, 0)
+    )
+    embed.add_field(name="👥 참가 명단 (0명)", value="아직 참가자가 없습니다.", inline=False)
+    embed.set_footer(text="Deathball Registration Panel")
+
+    await interaction.response.send_message(embed=embed, view=MatchupRegisterView())
+
+
+# --- #roblox-id ---
 @bot.tree.command(name="로블록스조회", description="로블록스 유저의 프로필, 생성일, 접속 상태, 닉네임 이력을 조회합니다.")
 async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     if interaction.channel.name != "roblox-id":
@@ -353,7 +470,7 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     await interaction.followup.send(embed=embed, view=view)
 
 
-# --- 한국 데스볼 티어 채널 (#korean-deathball-tier) ---
+# --- #korean-deathball-tier ---
 @bot.tree.command(name="티어등록", description="로블록스 닉네임을 입력하여 한국 티어에 등록합니다.")
 async def register_tier(interaction: discord.Interaction, rank: int, roblox_username: str):
     if interaction.channel.name != "korean-deathball-tier":
@@ -489,7 +606,7 @@ async def show_leaderboard(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# --- 일본 유저 티어 채널 (#japanese-deathball-tier) ---
+# --- #japanese-deathball-tier ---
 @bot.tree.command(name="일본유저티어등록", description="로블록스 닉네임을 입력하여 일본 유저 티어에 등록합니다.")
 async def register_jp_tier(interaction: discord.Interaction, rank: int, roblox_username: str):
     if interaction.channel.name != "japanese-deathball-tier":
