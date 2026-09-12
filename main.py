@@ -261,15 +261,10 @@ async def show_leaderboard(interaction: discord.Interaction):
 
 
 # ==========================================
-# 4. 봇 프로필 이미지 변경 명령어
+# 4. 봇 프로필 이미지 & 이름 변경 명령어
 # ==========================================
 @bot.tree.command(name="이미지변경", description="이미지 링크(URL)를 입력하여 봇의 프로필 사진을 변경합니다.")
 async def change_bot_avatar(interaction: discord.Interaction, image_url: str):
-    # 관리자 전용으로 설정하고 싶다면 아래 주석을 해제하세요 (원하는 사람만 쓰게 하려면 조건 추가 가능)
-    # if not interaction.user.guild_permissions.administrator:
-    #     await interaction.response.send_message("❌ 이 명령어는 관리자만 사용할 수 있습니다!", ephemeral=True)
-    #     return
-
     await interaction.response.defer(ephemeral=True)
 
     try:
@@ -281,12 +276,25 @@ async def change_bot_avatar(interaction: discord.Interaction, image_url: str):
                 
                 image_bytes = await resp.read()
 
-        # 디스코드 봇 프로필 아바타 수정
         await bot.user.edit(avatar=image_bytes)
         await interaction.followup.send("✨ 성공적으로 봇의 프로필 이미지가 변경되었습니다!", ephemeral=True)
 
     except discord.HTTPException as e:
         await interaction.followup.send(f"❌ 이미지 변경 실패 (디스코드 제한): 너무 자주 변경했거나 지원하지 않는 형식입니다. ({e})", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ 오류가 발생했습니다: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="봇이름변경", description="명령어로 봇의 이름을 변경합니다.")
+async def change_bot_name(interaction: discord.Interaction, new_name: str):
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        await bot.user.edit(username=new_name)
+        await interaction.followup.send(f"✨ 성공적으로 봇의 이름이 **'{new_name}'**(으)로 변경되었습니다!", ephemeral=True)
+
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"❌ 이름 변경 실패: 디스코드에서 이름을 너무 자주 바꾸면 제한될 수 있습니다. ({e})", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ 오류가 발생했습니다: {e}", ephemeral=True)
 
