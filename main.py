@@ -2,14 +2,9 @@ import os
 import random
 import aiohttp
 import asyncio
-import threading
-from flask import Flask, jsonify, request
 import discord
 from discord.ext import commands
 from datetime import datetime
-
-# Flask 웹서버 설정 (로블록스 연동용)
-app = Flask(__name__)
 
 # Intents 설정
 intents = discord.Intents.all()
@@ -20,7 +15,6 @@ user_rates = {}          # 로벅스 환율
 user_token_rates = {}    # 블레이드볼 토큰 환율
 deathball_tiers = {}     # 한국 데스볼 티어 순위표
 matchup_participants = set() # 내전 참가자 명단
-command_queue = []       # 로블록스 전송용 명령어 대기열
 
 # 🗺️ 데스볼 맵 리스트
 deathball_maps = ["클래식 아레나", "네온 시티", "볼케이노"]
@@ -44,18 +38,6 @@ async def on_ready():
         print(f"✅ 슬래시 명령어 총 {len(synced)}개 동기화 완료")
     except Exception as e:
         print(f"❌ 명령어 동기화 실패: {e}")
-
-
-# ==========================================
-# 🌐 웹서버 API 엔드포인트
-# ==========================================
-@app.route("/get_command", methods=["GET"])
-def get_command():
-    global command_queue
-    if command_queue:
-        cmd = command_queue.pop(0)
-        return jsonify(cmd), 200
-    return jsonify({"command": "none"}), 200
 
 
 # ==========================================
@@ -272,19 +254,14 @@ class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 ➔ 원화 계산�
 
 
 # ==========================================
-# 🎯 슬래시 명령어 (응답 지연 처리 적용)
+# 🎯 슬래시 명령어
 # ==========================================
-
 @bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 패널을 불러옵니다.")
 async def robux_menu(interaction: discord.Interaction):
     if interaction.channel.name != "robux-계산기":
         await interaction.response.send_message("❌ 이 명령어는 **#robux-계산기** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
-    embed = discord.Embed(
-        title="💎 로벅스 환율 & 공홈 비교 계산기", 
-        description="아래 버튼을 눌러 환율을 설정하거나 계산기를 이용하세요.", 
-        color=discord.Color.blurple()
-    )
+    embed = discord.Embed(title="💎 로벅스 환율 & 공홈 비교 계산기", description="아래 버튼을 눌러 환율을 설정하거나 계산기를 이용하세요.", color=discord.Color.blurple())
     await interaction.response.send_message(embed=embed, view=RobuxView())
 
 
@@ -293,11 +270,7 @@ async def token_menu(interaction: discord.Interaction):
     if interaction.channel.name != "블레이드볼-토큰계산":
         await interaction.response.send_message("❌ 이 명령어는 **#블레이드볼-토큰계산** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
-    embed = discord.Embed(
-        title="⚔️ 블레이드 볼 토큰 계산기", 
-        description="토큰 시세 환율 설정 및 환전 계산 메뉴입니다.", 
-        color=discord.Color.gold()
-    )
+    embed = discord.Embed(title="⚔️ 블레이드 볼 토큰 계산기", description="토큰 시세 환율 설정 및 환전 계산 메뉴입니다.", color=discord.Color.gold())
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
@@ -345,14 +318,13 @@ async def tournament_matchup(interaction: discord.Interaction, players: str):
     await interaction.response.send_message(embed=embed)
 
 
-# --- 🗺️ 데스볼 맵 관리 및 추천 명령어 ---
 @bot.tree.command(name="맵추천", description="등록된 데스볼 맵 중 하나를 무작위로 추첨해 줍니다.")
 async def recommend_map(interaction: discord.Interaction):
     if interaction.channel.name != "데스볼-맵-추천":
         await interaction.response.send_message("❌ 이 명령어는 **#데스볼-맵-추천** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
     if not deathball_maps:
-        await interaction.response.send_message("❌ 등록된 맵이 없습니다. `/맵추가` 명령어로 먼저 맵을 등록해주세요!", ephemeral=True)
+        await interaction.response.send_message("❌ 등록된 맵이 없습니다.", ephemeral=True)
         return
     chosen_map = random.choice(deathball_maps)
     embed = discord.Embed(title="🗺️ 데스볼 랜덤 맵 추첨 결과", description=f"# **🏟️ {chosen_map}**", color=discord.Color.green())
@@ -365,7 +337,7 @@ async def add_map(interaction: discord.Interaction, map_name: str):
         await interaction.response.send_message(f"⚠️ **{map_name}** 맵은 이미 목록에 존재합니다!", ephemeral=True)
         return
     deathball_maps.append(map_name)
-    await interaction.response.send_message(f"✅ 새로운 맵 **'{map_name}'**이(가) 추가되었습니다! (현재 총 {len(deathball_maps)}개 맵)", ephemeral=True)
+    await interaction.response.send_message(f"✅ 새로운 맵 **'{map_name}'**이(가) 추가되었습니다!", ephemeral=True)
 
 
 @bot.tree.command(name="맵삭제", description="등록된 데스볼 맵을 목록에서 제거합니다.")
@@ -405,9 +377,7 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
         await interaction.response.send_message("❌ 이 명령어는 **#roblox-id** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
     
-    # ⏱️ 디스코드 3초 타임아웃 방지용 대기 선언
     await interaction.response.defer()
-    
     info = await get_roblox_user_info(roblox_username)
     if not info:
         await interaction.followup.send("❌ 존재하지 않는 유저입니다.", ephemeral=True)
@@ -422,14 +392,11 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
 
 @bot.tree.command(name="한국인플레이어조회", description="데스볼 한국인 플레이어를 조회합니다.")
 async def deathball_korean_lookup(interaction: discord.Interaction, roblox_username: str):
-    # 채널 이름 검사 및 디스코드 타임아웃 방지(`defer`) 추가
     if interaction.channel.name != "death-ball-korean-player":
         await interaction.response.send_message("❌ 이 명령어는 **#death-ball-korean-player** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
     
-    # ⏱️ 핵심 수정: API 요청 전에 먼저 응답 지연을 선언하여 "애플리케이션이 응답하지 않았어요" 에러 원천 차단
     await interaction.response.defer()
-    
     info = await get_roblox_user_info(roblox_username)
     if not info:
         await interaction.followup.send("❌ 존재하지 않는 유저입니다.", ephemeral=True)
@@ -471,7 +438,6 @@ async def register_tier(interaction: discord.Interaction, rank: int, roblox_user
         return
     
     await interaction.response.defer()
-
     info = await get_roblox_user_info(roblox_username)
     if not info:
         await interaction.followup.send("❌ 유저를 찾을 수 없습니다.", ephemeral=True)
@@ -495,7 +461,6 @@ async def remove_tier(interaction: discord.Interaction, rank: int):
         return
     
     await interaction.response.defer()
-    
     deathball_tiers.pop(rank)
     new_tiers = { (r - 1 if r > rank else r): d for r, d in deathball_tiers.items() }
     deathball_tiers.clear()
@@ -526,41 +491,10 @@ async def show_leaderboard(interaction: discord.Interaction):
 
 
 # ==========================================
-# 🛠️ 일반 프리픽스 명령어
-# ==========================================
-@bot.command(name="킥")
-@commands.has_permissions(administrator=True)
-async def kick_player(ctx, username: str):
-    command_queue.append({"action": "kick", "target": username})
-    await ctx.send(f"🚨 [명령 전송] '{username}' 님을 게임에서 내보냅니다.")
-
-
-@bot.command(name="공지")
-@commands.has_permissions(administrator=True)
-async def send_notice(ctx, *, message: str):
-    command_queue.append({"action": "notice", "text": message})
-    await ctx.send(f"📢 [게임 공지 전송]: {message}")
-
-
-@bot.command(name="청소")
-@commands.has_permissions(manage_messages=True)
-async def clear_messages(ctx, amount: int = 10):
-    await ctx.message.delete()
-    deleted = await ctx.channel.purge(limit=amount)
-    msg = await ctx.send(f"🧹 최근 메시지 **{len(deleted)}개**를 말끔히 청소했습니다!")
-    await asyncio.sleep(2)
-    await msg.delete()
-
-
-# ==========================================
-# 🚀 봇 및 웹서버 통합 실행
+# 🚀 봇 실행 메인 함수 (웹서버 제거 버전)
 # ==========================================
 async def main():
     global http_session
-    threading.Thread(
-        target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
-    ).start()
-
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         print("❌ DISCORD_TOKEN이 환경 변수에 설정되지 않았습니다!")
