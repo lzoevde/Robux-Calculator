@@ -407,7 +407,6 @@ async def register_tier(interaction: discord.Interaction, rank: int, roblox_user
         await interaction.response.send_message("❌ **#korean-deathball-tier** 채널에서만 가능합니다.", ephemeral=True)
         return
     
-    # ⏱️ 3초 타임아웃 방지용 대기(defer) 선언
     await interaction.response.defer()
 
     info = await get_roblox_user_info(roblox_username)
