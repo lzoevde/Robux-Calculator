@@ -1,4 +1,6 @@
 import os
+import io
+import aiohttp
 import discord
 from discord.ext import commands
 
@@ -90,13 +92,8 @@ class WonModal(discord.ui.Modal, title="💰 원화 → 로벅스 비교 계산"
         won_val = int(self.won.value.replace(",", "").strip())
         rate = user_rates.get(interaction.user.id, 1300)
         
-        # 1. 탭 방식 환전 계산 (수수료 30% 반영)
         tab_rbx = (won_val / 10000) * rate * 0.7
-        
-        # 2. 공식 홈페이지 기준 계산 (1.5만원당 1000로벅스 -> 1원당 1000/15000 로벅스)
         official_rbx = won_val * (1000 / 15000)
-        
-        # 3. 차이 계산 (이득 비교)
         diff_rbx = tab_rbx - official_rbx
         percent_diff = ((tab_rbx - official_rbx) / official_rbx) * 100 if official_rbx > 0 else 0
         
@@ -244,7 +241,7 @@ async def show_leaderboard(interaction: discord.Interaction):
     medals = ["🥇", "🥈", "🥉"]
     
     for rank in sorted_ranks:
-        name = deathball_tiers[rank]
+        name = deathball_tiers.get(rank)
         if rank <= 3:
             rank_icon = medals[rank - 1]
         else:
@@ -261,6 +258,37 @@ async def show_leaderboard(interaction: discord.Interaction):
     embed.set_footer(text="Updated Live • Deathball Tier System")
     
     await interaction.response.send_message(embed=embed)
+
+
+# ==========================================
+# 4. 봇 프로필 이미지 변경 명령어
+# ==========================================
+@bot.tree.command(name="이미지변경", description="이미지 링크(URL)를 입력하여 봇의 프로필 사진을 변경합니다.")
+async def change_bot_avatar(interaction: discord.Interaction, image_url: str):
+    # 관리자 전용으로 설정하고 싶다면 아래 주석을 해제하세요 (원하는 사람만 쓰게 하려면 조건 추가 가능)
+    # if not interaction.user.guild_permissions.administrator:
+    #     await interaction.response.send_message("❌ 이 명령어는 관리자만 사용할 수 있습니다!", ephemeral=True)
+    #     return
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send("❌ 이미지 링크에서 사진을 불러오지 못했습니다. 올바른 직링크인지 확인해주세요.", ephemeral=True)
+                    return
+                
+                image_bytes = await resp.read()
+
+        # 디스코드 봇 프로필 아바타 수정
+        await bot.user.edit(avatar=image_bytes)
+        await interaction.followup.send("✨ 성공적으로 봇의 프로필 이미지가 변경되었습니다!", ephemeral=True)
+
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"❌ 이미지 변경 실패 (디스코드 제한): 너무 자주 변경했거나 지원하지 않는 형식입니다. ({e})", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ 오류가 발생했습니다: {e}", ephemeral=True)
 
 
 # 봇 실행
