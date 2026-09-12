@@ -377,7 +377,6 @@ async def tournament_matchup(interaction: discord.Interaction, players: str):
         embed.add_field(name=f"⚔️ Match {match_count}", value=f"`{p1}`  VS  `{p2}`", inline=False)
         match_count += 1
 
-    # 홀수 남는 사람 처리
     if len(player_list) % 2 != 0:
         odd_player = player_list[-1]
         embed.add_field(name="📌 부전승 / 대기자", value=f"`{odd_player}` (다음 라운드 직행)", inline=False)
@@ -423,7 +422,7 @@ async def matchup_menu(interaction: discord.Interaction):
         return
 
     global matchup_participants
-    matchup_participants.clear()  # 메뉴 생성 시 초기화
+    matchup_participants.clear()
 
     embed = discord.Embed(
         title="📝 데스볼 내전 참가자 모집",
@@ -465,6 +464,40 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
         embed.set_thumbnail(url=info['avatar_url'])
     
     embed.set_footer(text="Roblox Advanced Lookup System")
+
+    view = RobloxProfileView(info['profile_url'])
+    await interaction.followup.send(embed=embed, view=view)
+
+
+# --- #death-ball-korean-player 채널 전용 ---
+@bot.tree.command(name="한국인플레이어조회", description="데스볼 한국인 플레이어의 로블록스 프로필, 접속 상태, 닉네임 이력을 조회합니다.")
+async def deathball_korean_lookup(interaction: discord.Interaction, roblox_username: str):
+    if interaction.channel.name != "death-ball-korean-player":
+        await interaction.response.send_message("❌ 이 명령어는 **#death-ball-korean-player** 채널에서만 사용할 수 있습니다!", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    info = await get_roblox_user_info(roblox_username)
+    if not info:
+        await interaction.followup.send(f"❌ '{roblox_username}'은(는) 존재하지 않는 로블록스 유저이거나 탈퇴한 계정입니다.", ephemeral=True)
+        return
+
+    past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
+
+    embed = discord.Embed(
+        title=f"🇰🇷 데스볼 한국인 플레이어: {info['real_name']}",
+        color=discord.Color.from_rgb(255, 75, 75)
+    )
+    embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
+    embed.add_field(name="📅 계정 생성일", value=f"{info['created_at']}\n(가입한 지 **{info['age_days']:,}일**째)", inline=True)
+    embed.add_field(name="🟢 접속 상태", value=info['current_game'], inline=False)
+    embed.add_field(name="🔤 이전 닉네임 이력", value=past_str, inline=False)
+
+    if info['avatar_url']:
+        embed.set_thumbnail(url=info['avatar_url'])
+    
+    embed.set_footer(text="Deathball Korean Player Lookup System")
 
     view = RobloxProfileView(info['profile_url'])
     await interaction.followup.send(embed=embed, view=view)
@@ -696,7 +729,7 @@ async def remove_jp_tier(interaction: discord.Interaction, rank: int):
     embed.add_field(name="📊 총 등록 인원", value=f"**{len(japanese_tiers)}명** 참가 중", inline=False)
     embed.set_footer(text="Updated Live • Japanese User Tier System")
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(name="일본유저티어초기화", description="일본 데스볼 유저 티어 순위표 데이터를 초기화합니다.")
