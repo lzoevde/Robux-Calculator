@@ -15,76 +15,30 @@ app = Flask(__name__)
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 데이터 저장용 딕셔너리들
+# 데이터 저장용 딕셔너리 및 세트
 user_rates = {}          # 로벅스 환율
 user_token_rates = {}    # 블레이드볼 토큰 환율
-
-# 닉네임 대신 고유 ID(user_id)를 저장하여 닉네임 변경 시 실시간 반영
-deathball_tiers = {}     # {순위: {"user_id": 정수, "username": "...", "display_name": "..."}}
-japanese_tiers = {}      # {순위: {"user_id": 정수, "username": "...", "display_name": "..."}}
-
-# 내전 참가자 명단 저장용 세트
-matchup_participants = set()
-
-# 로블록스 실시간 서버 상태 변수
-game_data = {
-    "status": "서버 오프라인",
-    "map": "알 수 없음",
-    "players": [],
-    "max_players": 20,
-}
-status_message = None
-ROBLOX_STATUS_CHANNEL_ID = 123456789012345678  # ⚠️ 로블록스 실시간 현황판을 띄울 디스코드 채널 ID로 변경하세요!
-
-# 로블록스로 보낼 명령어 대기열
-command_queue = []
+deathball_tiers = {}     # 한국 데스볼 티어 순위표
+matchup_participants = set() # 내전 참가자 명단
+command_queue = []       # 로블록스 전송용 명령어 대기열
 
 
 @bot.event
 async def on_ready():
+    print(f"========================================")
     print(f"✅ 로그인 성공: {bot.user}")
+    print(f"🚀 디스코드 봇이 정상적으로 가동되었습니다.")
+    print(f"========================================")
     try:
         synced = await bot.tree.sync()
         print(f"✅ 슬래시 명령어 총 {len(synced)}개 동기화 완료")
     except Exception as e:
         print(f"❌ 명령어 동기화 실패: {e}")
 
-    # 봇이 켜질 때 현황판 채널의 이전 봇 메시지 자동 청소
-    global status_message
-    channel = bot.get_channel(ROBLOX_STATUS_CHANNEL_ID)
-    if channel:
-        try:
-            deleted_messages = []
-            async for msg in channel.history(limit=10):
-                if msg.author == bot.user:
-                    deleted_messages.append(msg)
-            if deleted_messages:
-                await channel.delete_messages(deleted_messages)
-                print(f"🧹 이전 로블록스 현황판 메시지 {len(deleted_messages)}개를 자동으로 청소했습니다.")
-        except Exception as e:
-            print(f"⚠️ 메시지 청소 중 예외 발생: {e}")
-
-        status_message = await channel.send("🎮 로블록스 서버 실시간 연결 대기 중...")
-
 
 # ==========================================
-# 🌐 로블록스 ⇄ 파이썬 웹서버 API 엔드포인트
+# 🌐 웹서버 API 엔드포인트
 # ==========================================
-@app.route("/update_status", methods=["POST"])
-def update_status():
-    global game_data
-    data = request.json
-    if data:
-        game_data["status"] = data.get("status", "플레이 중")
-        game_data["map"] = data.get("map", "기본 맵")
-        game_data["players"] = data.get("players", [])
-        game_data["max_players"] = data.get("max_players", 20)
-
-        bot.loop.create_task(update_roblox_embed())
-        return jsonify({"status": "success"}), 200
-    return jsonify({"status": "error"}), 400
-
-
 @app.route("/get_command", methods=["GET"])
 def get_command():
     global command_queue
@@ -94,35 +48,8 @@ def get_command():
     return jsonify({"command": "none"}), 200
 
 
-async def update_roblox_embed():
-    global status_message
-    if not status_message:
-        return
-
-    embed = discord.Embed(
-        title="🎮 로블록스 실시간 서버 관제센터", 
-        color=discord.Color.from_rgb(0, 162, 255)
-    )
-    embed.add_field(name="📌 서버 상태", value=game_data["status"], inline=True)
-    embed.add_field(name="🗺️ 현재 맵", value=game_data["map"], inline=True)
-
-    players = game_data["players"]
-    player_list_str = ", ".join([f"`{p}`" for p in players]) if players else "현재 접속 중인 플레이어 없음"
-    embed.add_field(
-        name=f"👥 접속자 ({len(players)}/{game_data['max_players']})",
-        value=player_list_str,
-        inline=False,
-    )
-    embed.set_footer(text="Live Auto-Sync from Roblox Studio")
-
-    try:
-        await status_message.edit(content=None, embed=embed)
-    except Exception as e:
-        print(f"현황판 메시지 수정 실패: {e}")
-
-
 # ==========================================
-# 🛠️ 로블록스 통합 프로필 API
+# 🛠️ 로블록스 프로필 조회 함수
 # ==========================================
 async def get_roblox_user_info(username: str):
     async with aiohttp.ClientSession() as session:
@@ -161,33 +88,6 @@ async def get_roblox_user_info(username: str):
                 if avatar_data.get("data"):
                     avatar_url = avatar_data["data"][0]["imageUrl"]
 
-        url_presence = "https://presence.roblox.com/v1/presence/users"
-        presence_payload = {"userIds": [user_id]}
-        current_game = "offline (접속 중 아님)"
-        async with session.post(url_presence, json=presence_payload) as resp:
-            if resp.status == 200:
-                p_data = await resp.json()
-                if p_data.get("userPresences"):
-                    presences = p_data.get("userPresences", [])
-                    if presences:
-                        p_type = presences[0].get("userPresenceType")
-                        if p_type == 2:
-                            game_name = presences[0].get("lastLocation", "알 수 없는 장소")
-                            current_game = f"🎮 플레이 중: {game_name}"
-                        elif p_type == 1:
-                            current_game = "🟢 온라인 (로비/웹 접속 중)"
-                        else:
-                            current_game = "⚪ 오프라인"
-
-        url_history = f"https://users.roblox.com/v1/users/{user_id}/username-history?limit=10&sortOrder=Desc"
-        past_names = []
-        async with session.get(url_history) as resp:
-            if resp.status == 200:
-                h_data = await resp.json()
-                items = h_data.get("data", [])
-                if items:
-                    past_names = [item.get("name") for item in items[:10]]
-
         profile_url = f"https://www.roblox.com/users/{user_id}/profile"
 
         return {
@@ -197,9 +97,7 @@ async def get_roblox_user_info(username: str):
             "profile_url": profile_url,
             "avatar_url": avatar_url,
             "created_at": created_at_str,
-            "age_days": account_age_days,
-            "current_game": current_game,
-            "past_names": past_names
+            "age_days": account_age_days
         }
 
 
@@ -214,56 +112,56 @@ async def get_latest_username_by_id(user_id: int):
 
 
 # ==========================================
-# 1. 뷰(버튼) 및 모달 클래스 모음
+# 🎨 UI 뷰(버튼) 및 모달 클래스 모음
 # ==========================================
 class RobuxView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
     
-    @discord.ui.button(label="환율 설정", style=discord.ButtonStyle.primary, custom_id="robux_set_rate")
+    @discord.ui.button(label="⚙️ 환율 설정", style=discord.ButtonStyle.primary, custom_id="robux_set_rate")
     async def set_rate_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(RateModal())
     
-    @discord.ui.button(label="원화→로벅스", style=discord.ButtonStyle.success, custom_id="robux_won_to_rbx")
+    @discord.ui.button(label="💵 원화 ➔ 로벅스", style=discord.ButtonStyle.success, custom_id="robux_won_to_rbx")
     async def won_to_rbx(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(WonModal())
     
-    @discord.ui.button(label="로벅스→원화", style=discord.ButtonStyle.danger, custom_id="robux_rbx_to_won")
+    @discord.ui.button(label="💎 로벅스 ➔ 원화", style=discord.ButtonStyle.danger, custom_id="robux_rbx_to_won")
     async def rbx_to_won(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(RbxModal())
     
-    @discord.ui.button(label="내 환율 확인", style=discord.ButtonStyle.secondary, custom_id="robux_check_rate")
+    @discord.ui.button(label="📊 내 환율 확인", style=discord.ButtonStyle.secondary, custom_id="robux_check_rate")
     async def check_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
         if user_id in user_rates:
-            await interaction.response.send_message(f"현재 로벅스 환율: 1만원당 **{user_rates[user_id]:,}R**", ephemeral=True)
+            await interaction.response.send_message(f"💡 현재 설정된 환율: 1만원당 **{user_rates[user_id]:,}R**", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ 환율을 설정하지 않았습니다.\n'환율 설정' 버튼을 클릭해주세요.", ephemeral=True)
+            await interaction.response.send_message("❌ 환율이 설정되지 않았습니다.\n**[⚙️ 환율 설정]** 버튼을 먼저 클릭해주세요!", ephemeral=True)
 
 
 class TokenView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
     
-    @discord.ui.button(label="토큰 환율 설정", style=discord.ButtonStyle.primary, custom_id="token_set_rate")
+    @discord.ui.button(label="⚙️ 토큰 환율 설정", style=discord.ButtonStyle.primary, custom_id="token_set_rate")
     async def set_token_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(TokenRateModal())
     
-    @discord.ui.button(label="원화 → 토큰", style=discord.ButtonStyle.success, custom_id="token_won_to_token")
+    @discord.ui.button(label="💵 원화 ➔ 토큰", style=discord.ButtonStyle.success, custom_id="token_won_to_token")
     async def won_to_token(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(WonToTokenModal())
     
-    @discord.ui.button(label="토큰 → 원화", style=discord.ButtonStyle.danger, custom_id="token_token_to_won")
+    @discord.ui.button(label="⚔️ 토큰 ➔ 원화", style=discord.ButtonStyle.danger, custom_id="token_token_to_won")
     async def token_to_won(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(TokenToWonModal())
     
-    @discord.ui.button(label="내 토큰 환율 확인", style=discord.ButtonStyle.secondary, custom_id="token_check_rate")
+    @discord.ui.button(label="📊 내 토큰 환율 확인", style=discord.ButtonStyle.secondary, custom_id="token_check_rate")
     async def check_token_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
         if user_id in user_token_rates:
-            await interaction.response.send_message(f"현재 설정된 토큰 환율: **1,000 토큰당 {user_token_rates[user_id]:,}원**", ephemeral=True)
+            await interaction.response.send_message(f"💡 현재 설정된 토큰 환율: **1,000 토큰당 {user_token_rates[user_id]:,}원**", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ 아직 토큰 환율을 설정하지 않았습니다.\n'토큰 환율 설정' 버튼을 클릭해주세요.", ephemeral=True)
+            await interaction.response.send_message("❌ 토큰 환율이 설정되지 않았습니다.\n**[⚙️ 토큰 환율 설정]** 버튼을 먼저 클릭해주세요!", ephemeral=True)
 
 
 class RobloxProfileView(discord.ui.View):
@@ -276,17 +174,17 @@ class MatchupRegisterView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="✅ 내전 참가하기", style=discord.ButtonStyle.success, custom_id="matchup_join_btn")
+    @discord.ui.button(label="✅ 참가하기", style=discord.ButtonStyle.success, custom_id="matchup_join_btn")
     async def join_matchup(self, interaction: discord.Interaction, button: discord.ui.Button):
         matchup_participants.add(interaction.user.display_name)
         participants_list = "\n".join([f"• `{name}`" for name in matchup_participants]) if matchup_participants else "아직 참가자가 없습니다."
         
         embed = interaction.message.embeds[0]
         embed.clear_fields()
-        embed.add_field(name=f"👥 참가 명단 ({len(matchup_participants)}명)", value=participants_list, inline=False)
+        embed.add_field(name=f"👥 실시간 참가 명단 ({len(matchup_participants)}명)", value=participants_list, inline=False)
         await interaction.response.edit_message(embed=embed)
 
-    @discord.ui.button(label="❌ 참가 취소하기", style=discord.ButtonStyle.danger, custom_id="matchup_cancel_btn")
+    @discord.ui.button(label="❌ 참가 취소", style=discord.ButtonStyle.danger, custom_id="matchup_cancel_btn")
     async def cancel_matchup(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.display_name in matchup_participants:
             matchup_participants.remove(interaction.user.display_name)
@@ -294,19 +192,19 @@ class MatchupRegisterView(discord.ui.View):
         
         embed = interaction.message.embeds[0]
         embed.clear_fields()
-        embed.add_field(name=f"👥 참가 명단 ({len(matchup_participants)}명)", value=participants_list, inline=False)
+        embed.add_field(name=f"👥 실시간 참가 명단 ({len(matchup_participants)}명)", value=participants_list, inline=False)
         await interaction.response.edit_message(embed=embed)
 
 
-# --- 모달 클래스들 ---
+# --- 모달(팝업 입력창) 모음 ---
 class RateModal(discord.ui.Modal, title="💎 로벅스 환율 설정"):
-    rate = discord.ui.TextInput(label="1만원당 로벅스", placeholder="예: 1300")
+    rate = discord.ui.TextInput(label="1만원당 로벅스 (숫자만 입력)", placeholder="예: 1300")
     async def on_submit(self, interaction: discord.Interaction):
         user_rates[interaction.user.id] = int(self.rate.value.replace(",", "").strip())
-        await interaction.response.send_message("✅ 로벅스 환율이 성공적으로 설정되었습니다!", ephemeral=True)
+        await interaction.response.send_message("✅ 로벅스 환율이 성공적으로 저장되었습니다!", ephemeral=True)
 
-class WonModal(discord.ui.Modal, title="💰 원화 → 로벅스 비교 계산"):
-    won = discord.ui.TextInput(label="원화 금액", placeholder="예: 50000")
+class WonModal(discord.ui.Modal, title="💰 원화 ➔ 로벅스 계산기"):
+    won = discord.ui.TextInput(label="원화 금액 (원)", placeholder="예: 50000")
     async def on_submit(self, interaction: discord.Interaction):
         won_val = int(self.won.value.replace(",", "").strip())
         rate = user_rates.get(interaction.user.id, 1300)
@@ -315,36 +213,35 @@ class WonModal(discord.ui.Modal, title="💰 원화 → 로벅스 비교 계산"
         diff_rbx = tab_rbx - official_rbx
         percent_diff = ((tab_rbx - official_rbx) / official_rbx) * 100 if official_rbx > 0 else 0
         
-        msg = (
-            f"💰 **입력 금액: {won_val:,}원**\n\n"
-            f"📌 **공식 홈페이지 구매 시:** 약 `{official_rbx:,.0f}R`\n"
-            f"🚀 **현재 탭 방식(환율 적용):** 수수료 반영 후 **`{tab_rbx:,.0f}R`**\n\n"
-            f"✨ **비교 결과:** 공홈보다 **`{diff_rbx:+,.0f}R`** (`{percent_diff:+.1f}%`) 더 이득입니다!"
-        )
-        await interaction.response.send_message(msg, ephemeral=True)
+        embed = discord.Embed(title="💰 로벅스 환전 비교 결과", color=discord.Color.blurple())
+        embed.add_field(name="입력 금액", value=f"`{won_val:,}원`", inline=False)
+        embed.add_field(name="📌 공식 홈페이지", value=f"`{official_rbx:,.0f}R`", inline=True)
+        embed.add_field(name="🚀 적용 환율 방식", value=f"**`{tab_rbx:,.0f}R`**", inline=True)
+        embed.add_field(name="✨ 효율 비교", value=f"공홈보다 **`{diff_rbx:+,.0f}R`** (`{percent_diff:+.1f}%`) 더 이득!", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-class RbxModal(discord.ui.Modal, title="💎 로벅스 → 원화 계산"):
-    rbx = discord.ui.TextInput(label="로벅스 금액", placeholder="예: 130000")
+class RbxModal(discord.ui.Modal, title="💎 로벅스 ➔ 원화 계산기"):
+    rbx = discord.ui.TextInput(label="로벅스 수량 (R)", placeholder="예: 130000")
     async def on_submit(self, interaction: discord.Interaction):
         rate = user_rates.get(interaction.user.id, 1300)
         won = (int(self.rbx.value.replace(",", "").strip()) / rate) * 10000
-        await interaction.response.send_message(f"💵 환전 예상 원화: **{won:,.0f}원**", ephemeral=True)
+        await interaction.response.send_message(f"💵 환전 예상 금액: **{won:,.0f}원**", ephemeral=True)
 
 class TokenRateModal(discord.ui.Modal, title="⚔️ 토큰 환율 설정"):
     rate = discord.ui.TextInput(label="1,000 토큰당 가격 (원)", placeholder="예: 5000")
     async def on_submit(self, interaction: discord.Interaction):
         user_token_rates[interaction.user.id] = int(self.rate.value.replace(",", "").strip())
-        await interaction.response.send_message("✅ 토큰 환율이 성공적으로 설정되었습니다!", ephemeral=True)
+        await interaction.response.send_message("✅ 토큰 환율이 성공적으로 저장되었습니다!", ephemeral=True)
 
-class WonToTokenModal(discord.ui.Modal, title="💰 원화 → 토큰 계산"):
-    won = discord.ui.TextInput(label="사용할 원화 금액", placeholder="예: 10000")
+class WonToTokenModal(discord.ui.Modal, title="💰 원화 ➔ 토큰 계산기"):
+    won = discord.ui.TextInput(label="사용할 원화 금액 (원)", placeholder="예: 10000")
     async def on_submit(self, interaction: discord.Interaction):
         rate = user_token_rates.get(interaction.user.id, 5000)
         tokens = (int(self.won.value.replace(",", "").strip()) / rate) * 1000
         await interaction.response.send_message(f"💰 획득 가능 토큰: **{tokens:,.0f} T**", ephemeral=True)
 
-class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 → 원화 계산"):
-    tokens = discord.ui.TextInput(label="계산할 토큰 수량", placeholder="예: 5000")
+class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 ➔ 원화 계산기"):
+    tokens = discord.ui.TextInput(label="계산할 토큰 수량 (T)", placeholder="예: 5000")
     async def on_submit(self, interaction: discord.Interaction):
         rate = user_token_rates.get(interaction.user.id, 5000)
         won = (int(self.tokens.value.replace(",", "").strip()) / 1000) * rate
@@ -352,34 +249,42 @@ class TokenToWonModal(discord.ui.Modal, title="⚔️ 토큰 → 원화 계산")
 
 
 # ==========================================
-# 2. 채널별 슬래시 명령어 모음
+# 🎯 슬래시 명령어 (채널별 제한 적용)
 # ==========================================
 
-@bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 메뉴를 불러옵니다.")
+@bot.tree.command(name="로벅스메뉴", description="로벅스 환율 설정 및 계산기 패널을 불러옵니다.")
 async def robux_menu(interaction: discord.Interaction):
     if interaction.channel.name != "robux-계산기":
         await interaction.response.send_message("❌ 이 명령어는 **#robux-계산기** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
-    embed = discord.Embed(title="💎 로벅스 환율 & 공홈 비교 계산기", description="원하시는 버튼을 클릭하세요.", color=discord.Color.from_rgb(88, 101, 242))
+    embed = discord.Embed(
+        title="💎 로벅스 환율 & 공홈 비교 계산기", 
+        description="아래 버튼을 눌러 환율을 설정하거나 계산기를 이용하세요.", 
+        color=discord.Color.blurple()
+    )
     await interaction.response.send_message(embed=embed, view=RobuxView())
 
 
-@bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 시세 계산기 메뉴를 불러옵니다.")
+@bot.tree.command(name="토큰메뉴", description="블레이드볼 토큰 시세 계산기 패널을 불러옵니다.")
 async def token_menu(interaction: discord.Interaction):
     if interaction.channel.name != "블레이드볼-토큰계산":
         await interaction.response.send_message("❌ 이 명령어는 **#블레이드볼-토큰계산** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
-    embed = discord.Embed(title="⚔️ 블레이드 볼 토큰 계산기", description="토큰 시세 환율 설정 메뉴입니다.", color=discord.Color.from_rgb(254, 231, 92))
+    embed = discord.Embed(
+        title="⚔️ 블레이드 볼 토큰 계산기", 
+        description="토큰 시세 환율 설정 및 환전 계산 메뉴입니다.", 
+        color=discord.Color.gold()
+    )
     await interaction.response.send_message(embed=embed, view=TokenView())
 
 
-@bot.tree.command(name="핑", description="봇의 실시간 반응 속도와 상태를 확인합니다.")
+@bot.tree.command(name="핑", description="봇의 실시간 응답 속도를 확인합니다.")
 async def bot_ping(interaction: discord.Interaction):
     if interaction.channel.name != "bot-ping":
         await interaction.response.send_message("❌ 이 명령어는 **#bot-ping** 채널에서만 사용할 수 있습니다!", ephemeral=True)
         return
     latency = round(bot.latency * 1000)
-    embed = discord.Embed(title="🏓 Pong! Bot Status", color=discord.Color.green() if latency < 100 else discord.Color.red())
+    embed = discord.Embed(title="🏓 퐁!", color=discord.Color.green() if latency < 100 else discord.Color.red())
     embed.add_field(name="⚡ 봇 응답 속도", value=f"`{latency}ms`", inline=True)
     await interaction.response.send_message(embed=embed)
 
@@ -395,7 +300,7 @@ async def random_teams(interaction: discord.Interaction, players: str):
         return
     random.shuffle(player_list)
     mid = len(player_list) // 2
-    embed = discord.Embed(title="⚔️ 데스볼 내전 랜덤 팀 편성 대진표", color=discord.Color.from_rgb(114, 137, 218))
+    embed = discord.Embed(title="⚔️ 데스볼 내전 랜덤 팀 배정", color=discord.Color.blurple())
     embed.add_field(name="🔵 [ A 팀 ]", value="\n".join([f"• `{p}`" for p in player_list[:mid]]), inline=True)
     embed.add_field(name="🔴 [ B 팀 ]", value="\n".join([f"• `{p}`" for p in player_list[mid:]]), inline=True)
     await interaction.response.send_message(embed=embed)
@@ -411,7 +316,7 @@ async def tournament_matchup(interaction: discord.Interaction, players: str):
         await interaction.response.send_message("❌ 최소 2명 이상의 닉네임을 입력해주세요!", ephemeral=True)
         return
     random.shuffle(player_list)
-    embed = discord.Embed(title="🏆 데스볼 토너먼트 대진표", color=discord.Color.from_rgb(255, 215, 0))
+    embed = discord.Embed(title="🏆 데스볼 토너먼트 대진표", color=discord.Color.gold())
     for i in range(0, len(player_list) - 1, 2):
         embed.add_field(name=f"⚔️ Match {i//2 + 1}", value=f"`{player_list[i]}`  VS  `{player_list[i+1]}`", inline=False)
     await interaction.response.send_message(embed=embed)
@@ -434,8 +339,8 @@ async def matchup_menu(interaction: discord.Interaction):
         return
     global matchup_participants
     matchup_participants.clear()
-    embed = discord.Embed(title="📝 데스볼 내전 참가자 모집", description="아래 버튼을 눌러 참여하세요!", color=discord.Color.from_rgb(255, 140, 0))
-    embed.add_field(name="👥 참가 명단 (0명)", value="아직 참가자가 없습니다.", inline=False)
+    embed = discord.Embed(title="📝 데스볼 내전 참가자 모집", description="아래 버튼을 눌러 내전에 참여하거나 취소하세요!", color=discord.Color.orange())
+    embed.add_field(name="👥 실시간 참가 명단 (0명)", value="아직 참가자가 없습니다.", inline=False)
     await interaction.response.send_message(embed=embed, view=MatchupRegisterView())
 
 
@@ -449,10 +354,9 @@ async def roblox_lookup(interaction: discord.Interaction, roblox_username: str):
     if not info:
         await interaction.followup.send("❌ 존재하지 않는 유저입니다.", ephemeral=True)
         return
-    embed = discord.Embed(title=f"🔍 프로필: {info['real_name']}", color=discord.Color.blue())
+    embed = discord.Embed(title=f"🔍 프로필: {info['real_name']}", color=discord.Color.blurple())
     embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
-    embed.add_field(name="📅 생성일", value=f"{info['created_at']} ({info['age_days']:,}일째)", inline=True)
-    embed.add_field(name="🟢 접속 상태", value=info['current_game'], inline=False)
+    embed.add_field(name="📅 계정 생성일", value=f"{info['created_at']} ({info['age_days']:,}일째)", inline=True)
     if info['avatar_url']:
         embed.set_thumbnail(url=info['avatar_url'])
     await interaction.followup.send(embed=embed, view=RobloxProfileView(info['profile_url']))
@@ -470,14 +374,13 @@ async def deathball_korean_lookup(interaction: discord.Interaction, roblox_usern
         return
     embed = discord.Embed(title=f"🇰🇷 한국인 플레이어: {info['real_name']}", color=discord.Color.red())
     embed.add_field(name="👤 표시 이름", value=f"`{info['display_name']}`", inline=True)
-    embed.add_field(name="🟢 접속 상태", value=info['current_game'], inline=False)
     if info['avatar_url']:
         embed.set_thumbnail(url=info['avatar_url'])
     await interaction.followup.send(embed=embed, view=RobloxProfileView(info['profile_url']))
 
 
 # ==========================================
-# 💡 실시간 닉네임 동기화 티어 시스템
+# 🏆 닉네임 자동 동기화 티어 시스템
 # ==========================================
 async def generate_tier_embed(tiers_dict, title, color_val, thumbnail_url=None):
     if not tiers_dict:
@@ -498,10 +401,10 @@ async def generate_tier_embed(tiers_dict, title, color_val, thumbnail_url=None):
     return embed
 
 
-@bot.tree.command(name="티어등록", description="한국 티어에 등록합니다.")
+@bot.tree.command(name="티어등록", description="한국 데스볼 티어에 유저를 등록합니다.")
 async def register_tier(interaction: discord.Interaction, rank: int, roblox_username: str):
     if interaction.channel.name != "korean-deathball-tier":
-        await interaction.response.send_message("❌ #korean-deathball-tier 채널에서만 가능합니다.", ephemeral=True)
+        await interaction.response.send_message("❌ **#korean-deathball-tier** 채널에서만 가능합니다.", ephemeral=True)
         return
     await interaction.defer()
     info = await get_roblox_user_info(roblox_username)
@@ -514,48 +417,48 @@ async def register_tier(interaction: discord.Interaction, rank: int, roblox_user
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
 
-    embed = await generate_tier_embed(deathball_tiers, "🏆 Korean Deathball Leaderboard", discord.Color.from_rgb(255, 69, 0), info['avatar_url'])
+    embed = await generate_tier_embed(deathball_tiers, "🏆 Korean Deathball Leaderboard", discord.Color.orange(), info['avatar_url'])
     await interaction.followup.send(embed=embed)
 
 
-@bot.tree.command(name="티어제거", description="한국 데스볼 순위에서 제거합니다.")
+@bot.tree.command(name="티어제거", description="한국 데스볼 순위에서 유저를 제거합니다.")
 async def remove_tier(interaction: discord.Interaction, rank: int):
     if interaction.channel.name != "korean-deathball-tier":
         return
     if rank not in deathball_tiers:
-        await interaction.response.send_message("❌ 해당 순위에 유저가 없습니다.", ephemeral=True)
+        await interaction.response.send_message("❌ 해당 순위에 등록된 유저가 없습니다.", ephemeral=True)
         return
     await interaction.defer()
     deathball_tiers.pop(rank)
     new_tiers = { (r - 1 if r > rank else r): d for r, d in deathball_tiers.items() }
     deathball_tiers.clear()
     deathball_tiers.update(new_tiers)
-    embed = await generate_tier_embed(deathball_tiers, "🏆 Korean Deathball Leaderboard", discord.Color.from_rgb(255, 69, 0))
+    embed = await generate_tier_embed(deathball_tiers, "🏆 Korean Deathball Leaderboard", discord.Color.orange())
     await interaction.followup.send(embed=embed)
 
 
-@bot.tree.command(name="티어초기화", description="한국 데스볼 티어 초기화")
+@bot.tree.command(name="티어초기화", description="한국 데스볼 티어 순위표를 초기화합니다.")
 async def reset_tier(interaction: discord.Interaction):
     if interaction.channel.name != "korean-deathball-tier":
         return
     deathball_tiers.clear()
-    await interaction.response.send_message("⚠️ 초기화되었습니다.", ephemeral=True)
+    await interaction.response.send_message("⚠️ 티어 순위표가 초기화되었습니다.", ephemeral=True)
 
 
-@bot.tree.command(name="티어순위", description="한국 데스볼 티어 순위표")
+@bot.tree.command(name="티어순위", description="한국 데스볼 티어 순위표를 확인합니다.")
 async def show_leaderboard(interaction: discord.Interaction):
     if interaction.channel.name != "korean-deathball-tier":
         return
     if not deathball_tiers:
-        await interaction.response.send_message("❌ 등록된 순위가 없습니다.", ephemeral=True)
+        await interaction.response.send_message("❌ 현재 등록된 순위가 없습니다.", ephemeral=True)
         return
     await interaction.defer()
-    embed = await generate_tier_embed(deathball_tiers, "🏆 Korean Deathball Leaderboard", discord.Color.from_rgb(255, 69, 0))
+    embed = await generate_tier_embed(deathball_tiers, "🏆 Korean Deathball Leaderboard", discord.Color.orange())
     await interaction.followup.send(embed=embed)
 
 
 # ==========================================
-# 🛠️ 일반 채팅 명령어 (킥, 공지, 청소)
+# 🛠️ 일반 프리픽스 명령어 (킥, 공지, 청소)
 # ==========================================
 @bot.command(name="킥")
 @commands.has_permissions(administrator=True)
@@ -575,10 +478,10 @@ async def send_notice(ctx, *, message: str):
 @commands.has_permissions(manage_messages=True)
 async def clear_messages(ctx, amount: int = 10):
     """채팅창의 메시지를 지정한 개수만큼 깔끔하게 삭제합니다. (기본 10개)"""
-    await ctx.message.delete()  # 명령어 입력한 본인의 메시지 먼저 삭제
+    await ctx.message.delete()
     deleted = await ctx.channel.purge(limit=amount)
     msg = await ctx.send(f"🧹 최근 메시지 **{len(deleted)}개**를 말끔히 청소했습니다!")
-    await asyncio.sleep(2)      # 2초 뒤 알림 메시지도 자동 삭제
+    await asyncio.sleep(2)
     await msg.delete()
 
 
