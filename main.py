@@ -380,7 +380,7 @@ async def deathball_korean_lookup(interaction: discord.Interaction, roblox_usern
 
 
 # ==========================================
-# 🏆 닉네임 자동 동기화 티어 시스템
+# 🏆 닉네임 자동 동기화 티어 시스템 (타임아웃 방지 최적화)
 # ==========================================
 async def generate_tier_embed(tiers_dict, title, color_val, thumbnail_url=None):
     if not tiers_dict:
@@ -406,7 +406,10 @@ async def register_tier(interaction: discord.Interaction, rank: int, roblox_user
     if interaction.channel.name != "korean-deathball-tier":
         await interaction.response.send_message("❌ **#korean-deathball-tier** 채널에서만 가능합니다.", ephemeral=True)
         return
-    await interaction.defer()
+    
+    # ⏱️ 3초 타임아웃 방지용 대기(defer) 선언
+    await interaction.response.defer()
+
     info = await get_roblox_user_info(roblox_username)
     if not info:
         await interaction.followup.send("❌ 유저를 찾을 수 없습니다.", ephemeral=True)
@@ -428,7 +431,9 @@ async def remove_tier(interaction: discord.Interaction, rank: int):
     if rank not in deathball_tiers:
         await interaction.response.send_message("❌ 해당 순위에 등록된 유저가 없습니다.", ephemeral=True)
         return
-    await interaction.defer()
+    
+    await interaction.response.defer()
+    
     deathball_tiers.pop(rank)
     new_tiers = { (r - 1 if r > rank else r): d for r, d in deathball_tiers.items() }
     deathball_tiers.clear()
@@ -452,7 +457,8 @@ async def show_leaderboard(interaction: discord.Interaction):
     if not deathball_tiers:
         await interaction.response.send_message("❌ 현재 등록된 순위가 없습니다.", ephemeral=True)
         return
-    await interaction.defer()
+    
+    await interaction.response.defer()
     embed = await generate_tier_embed(deathball_tiers, "🏆 Korean Deathball Leaderboard", discord.Color.orange())
     await interaction.followup.send(embed=embed)
 
